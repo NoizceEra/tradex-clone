@@ -1,4 +1,5 @@
 import React from 'react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
 export function Navbar({ activeView, setActiveView }) {
   return (
@@ -27,7 +28,7 @@ export function Navbar({ activeView, setActiveView }) {
       </div>
       
       <div className="nav-actions">
-        <button className="btn-primary">Connect Wallet</button>
+        <WalletMultiButton className="btn-primary" />
       </div>
     </nav>
   );
