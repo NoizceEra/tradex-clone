@@ -1,17 +1,28 @@
 import React from 'react';
 
-export function Navbar() {
+export function Navbar({ activeView, setActiveView }) {
   return (
     <nav className="navbar">
       <div className="nav-brand">
-        {/* Placeholder for Logo */}
         <div style={{ width: 24, height: 24, background: 'var(--accent)', borderRadius: '50%' }}></div>
         TradeX
       </div>
       
       <div className="nav-links">
-        <a href="#" className="nav-link active">Trade</a>
-        <a href="#" className="nav-link">Browse Cards</a>
+        <a 
+          href="#" 
+          className={`nav-link ${activeView === 'trade' ? 'active' : ''}`}
+          onClick={(e) => { e.preventDefault(); setActiveView('trade'); }}
+        >
+          Trade
+        </a>
+        <a 
+          href="#" 
+          className={`nav-link ${activeView === 'browse' ? 'active' : ''}`}
+          onClick={(e) => { e.preventDefault(); setActiveView('browse'); }}
+        >
+          Browse Cards
+        </a>
         <a href="#" className="nav-link">Portfolio</a>
       </div>
       

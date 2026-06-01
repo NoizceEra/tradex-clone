@@ -1,8 +1,15 @@
 import React, { useState } from 'react';
 
-export function OrderEntry() {
+export function OrderEntry({ selectedCard }) {
   const [position, setPosition] = useState('long');
   const [leverage, setLeverage] = useState(10);
+  
+  const entryPrice = selectedCard ? (
+    selectedCard.tcgplayer?.prices?.holofoil?.market ||
+    selectedCard.tcgplayer?.prices?.normal?.market ||
+    selectedCard.tcgplayer?.prices?.1stEditionHolofoil?.market ||
+    350.50
+  ) : 350.50;
   
   return (
     <div className="glass-panel order-entry">
@@ -60,7 +67,7 @@ export function OrderEntry() {
       <div className="order-summary">
         <div className="summary-row">
           <span className="label">Entry Price</span>
-          <span>$350.50</span>
+          <span>${entryPrice.toFixed(2)}</span>
         </div>
         <div className="summary-row">
           <span className="label">Liq. Price</span>
