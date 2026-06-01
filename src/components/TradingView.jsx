@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { createChart, ColorType } from 'lightweight-charts';
+import { createChart, ColorType, AreaSeries } from 'lightweight-charts';
 
 export function TradingView({ selectedCard }) {
   const chartContainerRef = useRef(null);
@@ -39,8 +39,8 @@ export function TradingView({ selectedCard }) {
 
     chartRef.current = chart;
     
-    // Create an Area series to match the golden look in the reference image
-    const series = chart.addAreaSeries({
+    // v5 API: pass the series type class as the first argument
+    const series = chart.addSeries(AreaSeries, {
       lineColor: '#fcd535',
       topColor: 'rgba(252, 213, 53, 0.4)',
       bottomColor: 'rgba(252, 213, 53, 0.0)',
