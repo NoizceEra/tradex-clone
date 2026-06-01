@@ -37,7 +37,7 @@ export function BrowseCards({ onSelectCard }) {
         {cards.map(card => {
           const price = card.tcgplayer?.prices?.holofoil?.market 
             || card.tcgplayer?.prices?.normal?.market 
-            || card.tcgplayer?.prices?.1stEditionHolofoil?.market
+            || card.tcgplayer?.prices?.['1stEditionHolofoil']?.market
             || 0;
             
           return (

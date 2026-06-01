@@ -7,7 +7,7 @@ export function TradingView({ selectedCard }) {
   const price = selectedCard ? (
     selectedCard.tcgplayer?.prices?.holofoil?.market ||
     selectedCard.tcgplayer?.prices?.normal?.market ||
-    selectedCard.tcgplayer?.prices?.1stEditionHolofoil?.market ||
+    selectedCard.tcgplayer?.prices?.['1stEditionHolofoil']?.market ||
     350.50
   ) : 350.50;
   
