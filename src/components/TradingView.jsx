@@ -1,4 +1,5 @@
 import React from 'react';
+import { AdvancedRealTimeChart } from 'react-ts-tradingview-widgets';
 
 export function TradingView() {
   return (
@@ -34,10 +35,14 @@ export function TradingView() {
       </div>
 
       {/* Chart Area */}
-      <div className="glass-panel chart-container">
-        <div className="chart-placeholder">
-          TradingView Chart Integration Placeholder
-        </div>
+      <div className="glass-panel chart-container" style={{ padding: 0, overflow: 'hidden' }}>
+        <AdvancedRealTimeChart 
+          theme="dark"
+          symbol="BINANCE:SOLUSD"
+          autosize
+          allow_symbol_change={false}
+          hide_side_toolbar={false}
+        />
       </div>
     </div>
   );
