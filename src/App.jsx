@@ -63,8 +63,8 @@ function App() {
     async function fetchCards() {
       try {
         const response = await fetch(
-          'https://api.pokemontcg.io/v2/cards?q=set.id:base1 supertype:Pokémon&orderBy=-tcgplayer.prices.holofoil.market&pageSize=60',
-          { headers: { 'X-Api-Key': '07c20d0a64mshf9bf046e5c2971dp18eebbjsnd624c80d8b9b' } }
+          'https://api.pokemontcg.io/v2/cards?q=supertype:Pokémon&orderBy=-tcgplayer.prices.holofoil.market&pageSize=2000',
+          { headers: { 'X-Api-Key': '07c20d0a64mshf9bf046e5c2971dp18eebbjsnd624c80d8b9b' }, cache: 'no-store' }
         );
         const data = await response.json();
         if (data && data.data) {
@@ -90,9 +90,15 @@ function App() {
 
         // Fetch JustTCG data (using tcgplayer product id if available)
         const tcgplayerId = selectedCard.tcgplayer?.productId || selectedCard.id;
-        const justRes = await fetch(`/api/justtcg/v1/cards?tcgplayerId=${tcgplayerId}`, {
+        let justRes = await fetch(`/api/justtcg/v1/cards?tcgplayerId=${tcgplayerId}`, {
           headers: { 'x-api-key': 'tcg_3e15742bfe6e46a39d7f4cc3c6e6835a' }
         });
+        // If the tcgplayerId lookup fails (404), fall back to using the card's own ID
+        if (!justRes.ok && justRes.status === 404) {
+          justRes = await fetch(`/api/justtcg/v1/cards?cardId=${selectedCard.id}`, {
+            headers: { 'x-api-key': 'tcg_3e15742bfe6e46a39d7f4cc3c6e6835a' }
+          });
+        }
         const justTcgData = justRes.ok ? await justRes.json() : null;
 
         setSupplementalData({ tcgdex: tcgdexData, justTcg: justTcgData });
