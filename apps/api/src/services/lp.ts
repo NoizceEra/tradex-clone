@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { HttpError } from '../errors.ts';
 import type { Db, Queryer } from '../db/client.ts';
 import { getOrCreateUserAccount, getOrCreateSystemAccount, getBalance, postTxn } from './ledger.ts';
+import { grossOpenNotional } from './oi.ts';
 
 /**
  * LP pool, ERC-4626 style. NAV = the LP_POOL ledger balance (real USDC LPs put in, plus
@@ -15,6 +16,14 @@ async function poolMeta(q: Queryer): Promise<{ totalShares: bigint; reserved: bi
     `SELECT total_shares::text AS s, reserved_for_oi_uusdc::text AS r FROM lp_pool WHERE id='pool'`,
   );
   return { totalShares: BigInt(r.rows[0]?.s ?? '0'), reserved: BigInt(r.rows[0]?.r ?? '0') };
+}
+
+/** Pool snapshot: LP_POOL account id, NAV (ledger balance), outstanding shares, reserved capital. */
+async function poolState(q: Queryer): Promise<{ lp: string; nav: bigint; totalShares: bigint; reserved: bigint }> {
+  const lp = await getOrCreateSystemAccount(q, 'LP_POOL');
+  const nav = await getBalance(q, lp);
+  const { totalShares, reserved } = await poolMeta(q);
+  return { lp, nav, totalShares, reserved };
 }
 
 export async function lpDeposit(db: Db, userId: string, amountUusdc: bigint): Promise<{ sharesMinted: string; navAfter: string }> {
@@ -91,9 +100,7 @@ export interface PoolView {
 }
 
 export async function getPool(db: Db): Promise<PoolView> {
-  const lp = await getOrCreateSystemAccount(db, 'LP_POOL');
-  const nav = await getBalance(db, lp);
-  const { totalShares, reserved } = await poolMeta(db);
+  const { nav, totalShares, reserved } = await poolState(db);
   const sharePriceE6 = totalShares > 0n ? (nav * 1_000_000n) / totalShares : 1_000_000n;
   return {
     navUusdc: nav.toString(),
@@ -106,18 +113,13 @@ export async function getPool(db: Db): Promise<PoolView> {
 export async function getLpPosition(db: Db, userId: string): Promise<{ shares: string; valueUusdc: string }> {
   const pos = await db.query<{ s: string }>(`SELECT shares::text AS s FROM lp_positions WHERE user_id=$1`, [userId]);
   const shares = BigInt(pos.rows[0]?.s ?? '0');
-  const lp = await getOrCreateSystemAccount(db, 'LP_POOL');
-  const nav = await getBalance(db, lp);
-  const { totalShares } = await poolMeta(db);
+  const { nav, totalShares } = await poolState(db);
   const value = totalShares > 0n ? (shares * nav) / totalShares : 0n;
   return { shares: shares.toString(), valueUusdc: value.toString() };
 }
 
 /** Recompute pool-wide reserved capital = gross open notional across all markets. */
 export async function refreshReserved(q: Queryer): Promise<void> {
-  const r = await q.query<{ oi: string }>(
-    `SELECT COALESCE(SUM((qty_e6::numeric * avg_entry_e6::numeric) / 1000000), 0)::bigint::text AS oi
-     FROM positions WHERE status='open'`,
-  );
-  await q.query(`UPDATE lp_pool SET reserved_for_oi_uusdc = $1, updated_at = now() WHERE id='pool'`, [r.rows[0].oi]);
+  const reserved = await grossOpenNotional(q);
+  await q.query(`UPDATE lp_pool SET reserved_for_oi_uusdc = $1, updated_at = now() WHERE id='pool'`, [reserved.toString()]);
 }

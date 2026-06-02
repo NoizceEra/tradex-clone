@@ -18,10 +18,10 @@ export const INDEX_SLUGS = ['top-250', 'top-100', 'graded', 'sealed'];
 
 /** Index catalogue (mirrors TCGFish widget set). `tradeable:false` = data source pending. */
 export const INDEX_CATALOG = [
-  { slug: 'top-100', name: 'Top 100', tracks: 'Top 100 cards by market price', tradeable: true },
-  { slug: 'top-250', name: 'Top 250', tracks: 'Top 250 cards by market price', tradeable: true },
-  { slug: 'graded', name: 'Graded (PSA 10)', tracks: 'PSA 10 graded cards', tradeable: false },
-  { slug: 'sealed', name: 'Sealed', tracks: 'Sealed product', tradeable: false },
+  { slug: 'top-100', name: 'Top 100', tracks: 'Top 100 cards by market price', tradeable: true, topN: 100 },
+  { slug: 'top-250', name: 'Top 250', tracks: 'Top 250 cards by market price', tradeable: true, topN: 250 },
+  { slug: 'graded', name: 'Graded (PSA 10)', tracks: 'PSA 10 graded cards', tradeable: false, topN: null },
+  { slug: 'sealed', name: 'Sealed', tracks: 'Sealed product', tradeable: false, topN: null },
 ];
 
 export const MAX_LEVERAGE = 20;

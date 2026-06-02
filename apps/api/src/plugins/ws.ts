@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 import { onMessage } from '../services/bus.ts';
 import { verifyAccessToken } from '../services/auth.ts';
+import { WS_PRIVATE_CHANNELS } from '@pokex/shared-types';
 
 /** Minimal shape of the ws WebSocket we use (avoids an @types/ws dependency). */
 interface Sock {
@@ -11,8 +12,7 @@ interface Sock {
 }
 
 // Per-user channels are private; a client may only subscribe to its OWN.
-const PRIVATE_PREFIXES = ['positions', 'orders', 'balance', 'liquidations', 'lp'];
-const isPrivate = (ch: string) => PRIVATE_PREFIXES.some((p) => ch.startsWith(p + ':'));
+const isPrivate = (ch: string) => WS_PRIVATE_CHANNELS.some((p) => ch.startsWith(p + ':'));
 
 /**
  * WebSocket hub at /ws. Public channels (mark/stats/oi/funding) are open. Private per-user

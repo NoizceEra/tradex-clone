@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, AreaSeries } from 'lightweight-charts';
-import { formatUsd } from '@pokex/pricing';
+import { formatUsd, formatPct } from '@pokex/pricing';
 import { useRealtime } from '../store/realtime';
 import * as api from '../lib/api.js';
 
@@ -116,7 +116,7 @@ export function TradingView({ market }) {
           </div>
           <div className="stat-block">
             <span className="stat-label">24H</span>
-            <span className={`stat-value ${changeUp ? 'up' : 'down'}`}>{changeUp ? '+' : ''}{change.toFixed(2)}%</span>
+            <span className={`stat-value ${changeUp ? 'up' : 'down'}`}>{formatPct(change)}</span>
           </div>
           <div className="stat-block">
             <span className="stat-label">INDEX</span>

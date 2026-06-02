@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto';
 import type { Db, Queryer } from '../db/client.ts';
 import { usdc } from '../money.ts';
 
+// Per-side open-interest caps (risk parameters). Indices are diversified -> deeper books.
+const CARD_OI_CAP = usdc(50_000).toString();
+const INDEX_OI_CAP = usdc(250_000).toString();
+
 /** Market row with all BIGINT columns surfaced as decimal strings. */
 export interface MarketRow {
   id: string;
@@ -43,7 +47,7 @@ export async function upsertCardMarket(
   opts: { symbol: string; cardId: string; displayName: string; variant: string | null; imageSmall: string | null },
 ): Promise<string> {
   const id = randomUUID();
-  const oi = usdc(50_000).toString();
+  const oi = CARD_OI_CAP;
   await q.query(
     `INSERT INTO markets(id, kind, symbol, display_name, card_id, variant, image_small, tradeable,
        max_oi_long_uusdc, max_oi_short_uusdc)
@@ -62,7 +66,7 @@ export async function upsertIndexMarket(
 ): Promise<string> {
   const id = randomUUID();
   const symbol = `INDEX:${opts.slug}`;
-  const oi = usdc(250_000).toString(); // indices are diversified -> deeper books
+  const oi = INDEX_OI_CAP;
   await q.query(
     `INSERT INTO markets(id, kind, symbol, display_name, index_slug, tradeable,
        max_oi_long_uusdc, max_oi_short_uusdc, max_dev_bps)

@@ -111,7 +111,7 @@ export async function ingest(db: Db, fetcher: CardFetcher = fetchTopCards): Prom
       await db.tx((q) => upsertIndexMarket(q, { slug: idx.slug, name: idx.name, tradeable: false }));
       continue;
     }
-    const n = idx.slug === 'top-100' ? 100 : idx.slug === 'top-250' ? 250 : sorted.length;
+    const n = idx.topN ?? sorted.length;
     const members = sorted.slice(0, n).map((x) => ({ cardId: x.c.id as string, priceE6: x.priceE6 }));
     await buildIndex(db, idx, members, observedAt);
     indices++;

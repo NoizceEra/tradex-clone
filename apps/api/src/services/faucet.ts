@@ -14,12 +14,19 @@ export interface UserBalances {
 }
 
 export async function getUserBalances(db: Db, userId: string): Promise<UserBalances> {
-  const { available, margin } = await db.tx(async (q) => ({
-    available: await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL'),
-    margin: await getOrCreateUserAccount(q, userId, 'USER_POSITION_MARGIN'),
-  }));
-  const availableUusdc = await getBalance(db, available);
-  const lockedMarginUusdc = await getBalance(db, margin);
+  // single read; accounts get created on first faucet/trade, absent rows read as 0
+  const r = await db.query<{ type: string; amt: string }>(
+    `SELECT a.type, COALESCE(b.amount_uusdc, 0)::text AS amt
+     FROM accounts a LEFT JOIN balances b ON b.account_id = a.id
+     WHERE a.user_id = $1 AND a.type IN ('USER_COLLATERAL', 'USER_POSITION_MARGIN')`,
+    [userId],
+  );
+  let availableUusdc = 0n;
+  let lockedMarginUusdc = 0n;
+  for (const row of r.rows) {
+    if (row.type === 'USER_COLLATERAL') availableUusdc = BigInt(row.amt);
+    else if (row.type === 'USER_POSITION_MARGIN') lockedMarginUusdc = BigInt(row.amt);
+  }
   return { availableUusdc, lockedMarginUusdc, equityUusdc: availableUusdc + lockedMarginUusdc };
 }
 

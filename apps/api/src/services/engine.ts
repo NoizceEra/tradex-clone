@@ -8,6 +8,7 @@ import { recomputeMark } from './marks.ts';
 import { getOrCreateUserAccount, getOrCreateSystemAccount, getBalance, postTxn } from './ledger.ts';
 import { refreshReserved } from './lp.ts';
 import { getCumulativeFundingE6, settlePositionFunding } from './funding.ts';
+import { openNotionalBySide } from './oi.ts';
 import { publish } from './bus.ts';
 
 /** Charge a trading fee, split between LPs and platform revenue (a balanced ledger txn). */
@@ -28,15 +29,6 @@ async function chargeFee(q: Queryer, userId: string, feeAmt: bigint, reason: str
       { accountId: rev, amount: revPart },
     ],
   });
-}
-
-async function sideOpenInterest(q: Queryer, marketId: string, side: string): Promise<bigint> {
-  const r = await q.query<{ oi: string }>(
-    `SELECT COALESCE(SUM((qty_e6::numeric * avg_entry_e6::numeric) / 1000000), 0)::bigint::text AS oi
-     FROM positions WHERE market_id=$1 AND side=$2 AND status='open'`,
-    [marketId, side],
-  );
-  return BigInt(r.rows[0].oi);
 }
 
 /**
@@ -130,6 +122,12 @@ async function refreshMark(q: Queryer, market: MarketRow, indexE6: bigint): Prom
   });
 }
 
+/** Post-mutation refresh: recompute the mark from current skew and the pool's reserved capital. */
+async function refreshMarketState(q: Queryer, market: MarketRow, indexE6: bigint): Promise<void> {
+  await refreshMark(q, market, indexE6);
+  await refreshReserved(q);
+}
+
 // ---- public types ---------------------------------------------------------
 export interface OpenInput {
   marketId: string;
@@ -199,7 +197,8 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
 
       // open-interest cap (per side) protects the LP pool
       const sideCap = input.side === 'long' ? BigInt(market.max_oi_long_uusdc) : BigInt(market.max_oi_short_uusdc);
-      if (sideCap > 0n && (await sideOpenInterest(q, market.id, input.side)) + notion > sideCap) {
+      const sideOi = (await openNotionalBySide(q, market.id))[input.side === 'long' ? 'longOi' : 'shortOi'];
+      if (sideCap > 0n && sideOi + notion > sideCap) {
         throw new HttpError(400, 'open interest cap reached for this side');
       }
 
@@ -255,8 +254,7 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
         [randomUUID(), orderId, positionId, market.id, markE6.toString(), input.qtyE6.toString(), openFee.toString()],
       );
 
-      await refreshMark(q, market, indexE6);
-      await refreshReserved(q);
+      await refreshMarketState(q, market, indexE6);
       publish(`positions:${userId}`, 'update', { marketId: market.id });
       publish(`balance:${userId}`, 'update', {});
       return { orderId, positionId };
@@ -368,8 +366,7 @@ export async function closePosition(db: Db, userId: string, input: CloseInput): 
         [randomUUID(), orderId, pos.id, market.id, markE6.toString(), closeQty.toString(), closeFeeAmt.toString(), pnl.toString()],
       );
 
-      await refreshMark(q, market, indexE6);
-      await refreshReserved(q);
+      await refreshMarketState(q, market, indexE6);
       publish(`positions:${userId}`, 'update', { marketId: market.id });
       publish(`balance:${userId}`, 'update', {});
       return { orderId, realizedPnlUusdc: pnl.toString(), closedQtyE6: closeQty.toString(), remainingQtyE6: remQty.toString() };
@@ -530,8 +527,7 @@ async function liquidatePositionInTx(q: Queryer, pos: PositionRow, market: Marke
     [randomUUID(), pos.id, market.id, pos.user_id, markE6.toString(), qty.toString(), liqFeeTaken.toString(), badDebt.toString(), drawn.toString(), socialized.toString()],
   );
 
-  await refreshMark(q, market, indexE6);
-  await refreshReserved(q);
+  await refreshMarketState(q, market, indexE6);
   publish(`positions:${pos.user_id}`, 'liquidated', { positionId: pos.id, markE6: markE6.toString() });
   publish(`liquidations:${pos.user_id}`, 'liquidation', { positionId: pos.id, marketId: market.id, badDebtUusdc: badDebt.toString() });
 }

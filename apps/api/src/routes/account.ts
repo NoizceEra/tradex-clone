@@ -8,8 +8,7 @@ import { getUserUnrealizedPnl } from '../services/engine.ts';
 export async function accountRoutes(app: FastifyInstance): Promise<void> {
   app.get('/account/balance', { preHandler: authenticate }, async (req) => {
     const db = await getDb();
-    const b = await getUserBalances(db, req.userId!);
-    const uPnl = await getUserUnrealizedPnl(db, req.userId!);
+    const [b, uPnl] = await Promise.all([getUserBalances(db, req.userId!), getUserUnrealizedPnl(db, req.userId!)]);
     return {
       availableUusdc: b.availableUusdc.toString(),
       lockedMarginUusdc: b.lockedMarginUusdc.toString(),

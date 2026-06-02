@@ -1,6 +1,7 @@
 import { notional } from '@pokex/pricing';
 import { config } from '../config.ts';
 import { advisoryXactLock, type Db, type Queryer } from '../db/client.ts';
+import { openNotionalBySide } from './oi.ts';
 import { getOrCreateUserAccount, getOrCreateSystemAccount, postTxn } from './ledger.ts';
 
 /**
@@ -19,26 +20,11 @@ export async function getCumulativeFundingE6(q: Queryer, marketId: string): Prom
   return r.rows[0] ? BigInt(r.rows[0].c) : 0n;
 }
 
-async function sideOi(q: Queryer, marketId: string): Promise<{ longOi: bigint; shortOi: bigint }> {
-  const r = await q.query<{ side: string; oi: string }>(
-    `SELECT side, COALESCE(SUM((qty_e6::numeric * avg_entry_e6::numeric) / 1000000), 0)::bigint::text AS oi
-     FROM positions WHERE market_id=$1 AND status='open' GROUP BY side`,
-    [marketId],
-  );
-  let longOi = 0n;
-  let shortOi = 0n;
-  for (const row of r.rows) {
-    if (row.side === 'long') longOi = BigInt(row.oi);
-    else shortOi = BigInt(row.oi);
-  }
-  return { longOi, shortOi };
-}
-
 /** Append a funding interval, advancing the cumulative index by a skew-proportional rate. */
 export async function accrueFunding(db: Db, marketId: string): Promise<{ rateE6: string; cumulativeE6: string }> {
   return db.tx(async (q) => {
     await advisoryXactLock(q, marketId); // serialize with trades/liquidations on this market
-    const { longOi, shortOi } = await sideOi(q, marketId);
+    const { longOi, shortOi } = await openNotionalBySide(q, marketId);
     const oi = longOi + shortOi;
     let skewBps = 0;
     if (oi > 0n) {
