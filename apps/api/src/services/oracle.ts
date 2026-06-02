@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { getCardPrice, toE6 } from '@pokex/pricing';
+import { getCardPrice, toE6, SCALE } from '@pokex/pricing';
 import { INDEX_CATALOG } from '@pokex/shared-types';
 import { config } from '../config.ts';
 import type { Db, Queryer } from '../db/client.ts';
@@ -11,6 +11,7 @@ export type CardFetcher = () => Promise<any[]>;
 
 const OUTLIER_THRESHOLD = 0.6; // reject prints > 60% from last accepted (manipulation/staleness guard)
 const BASE_VALUE_E6 = 1_000_000_000n; // indices start at 1000.000000 points
+const REANCHOR_JUMP_FACTOR = 4n; // a 1-tick jump beyond this can only be a wrong-scale divisor, not a real basket move
 
 function pickVariant(c: any): string | null {
   const p = c?.tcgplayer?.prices;
@@ -201,16 +202,10 @@ async function buildIndex(
   );
   // The divisor carries 6 fractional digits (the column is divisor_e6): value = rawE6 * SCALE / divisor.
   // Without the scale a sub-$1000 basket would truncate the divisor toward 0 and the index would jump.
-  const SCALE = 1_000_000n;
   const anchorDivisor = (target: bigint) => {
     const d = (rawE6 * SCALE) / target; // solve  rawE6 * SCALE / d == target
     return d > 0n ? d : 1n; // floor only for the degenerate rawE6 == 0 basket
   };
-  const prevRow = await db.query<{ v: string }>(
-    `SELECT index_price_e6::text AS v FROM oracle_prices WHERE market_id=$1 AND is_accepted ORDER BY source_observed_at DESC LIMIT 1`,
-    [marketId],
-  );
-  const prevVal = prevRow.rows[0] ? BigInt(prevRow.rows[0].v) : 0n;
 
   let divisor: bigint;
   if (!divRow.rows[0]) {
@@ -222,11 +217,17 @@ async function buildIndex(
     );
   } else {
     divisor = BigInt(divRow.rows[0].d);
-    // Re-anchor the divisor so the print stays continuous on a constituent-set change, and self-heal a
-    // divisor persisted at the wrong scale (legacy pre-SCALE rows would otherwise jump ~1e6x — a
-    // discontinuity no diversified basket can make, well past the outlier guard).
+    const prevRow = await db.query<{ v: string }>(
+      `SELECT index_price_e6::text AS v FROM oracle_prices WHERE market_id=$1 AND is_accepted ORDER BY source_observed_at DESC LIMIT 1`,
+      [marketId],
+    );
+    const prevVal = prevRow.rows[0] ? BigInt(prevRow.rows[0].v) : 0n;
+    // Re-anchor the divisor (keeping the print continuous) on a constituent-set change, and self-heal a
+    // divisor persisted at the wrong scale: a legacy pre-SCALE row would compute a value ~1e6x off, a
+    // jump REANCHOR_JUMP_FACTOR catches as impossible for a diversified basket.
+    const candidateE6 = (rawE6 * SCALE) / divisor; // value if we kept the stored divisor
     const setChanged = oldSet !== '' && oldSet !== newSet;
-    const wrongScale = prevVal > 0n && (rawE6 * SCALE) / divisor > prevVal * 4n;
+    const wrongScale = candidateE6 > prevVal * REANCHOR_JUMP_FACTOR;
     if (prevVal > 0n && (setChanged || wrongScale)) {
       divisor = anchorDivisor(prevVal);
       await db.query(`UPDATE index_divisors SET divisor_e6=$1, as_of=now() WHERE market_id=$2`, [divisor.toString(), marketId]);

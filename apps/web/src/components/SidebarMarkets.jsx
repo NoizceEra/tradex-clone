@@ -6,6 +6,17 @@ import * as api from '../lib/api.js';
 
 const TABS = ['indices', 'cards', 'positions'];
 
+// Subtitle under a market row: a card shows its set logo (falling back to its symbol), an index
+// shows its leverage or a "soon" badge when it isn't tradeable yet.
+function marketSubtitle(m) {
+  if (m.kind === 'card') {
+    return m.setLogo
+      ? <img src={m.setLogo} alt="" className="set-logo" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+      : m.symbol;
+  }
+  return m.tradeable ? `Index · ${m.maxLeverage}x` : 'Soon';
+}
+
 export function SidebarMarkets({ markets, loading, selected, onSelect, collapsed, setCollapsed }) {
   const [tab, setTab] = useState('cards');
   const [search, setSearch] = useState('');
@@ -117,15 +128,7 @@ export function SidebarMarkets({ markets, loading, selected, onSelect, collapsed
                   {m.imageSmall ? <img src={m.imageSmall} alt="" className="market-thumb" /> : <span className="market-thumb idx-thumb">IDX</span>}
                   <div className="market-item-info">
                     <span className="market-item-name">{m.displayName}</span>
-                    <span className="market-item-set">
-                      {m.kind === 'card' && m.setLogo ? (
-                        <img src={m.setLogo} alt="" className="set-logo" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                      ) : m.kind === 'index' ? (
-                        m.tradeable ? `Index · ${m.maxLeverage}x` : 'Soon'
-                      ) : (
-                        m.symbol
-                      )}
-                    </span>
+                    <span className="market-item-set">{marketSubtitle(m)}</span>
                   </div>
                 </div>
                 <div className="market-item-right">

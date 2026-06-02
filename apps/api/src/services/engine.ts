@@ -86,6 +86,47 @@ async function getPositionById(q: Queryer, id: string): Promise<PositionRow | nu
   return r.rows[0] ?? null;
 }
 
+/**
+ * The order row is the in-tx idempotency anchor: insert it first, and a racing duplicate (same
+ * user+key) inserts nothing. Returns the canonical order id (the one just inserted, or the prior
+ * one on conflict) and whether THIS call won the race — callers replay instead of re-running.
+ */
+async function anchorOrder(
+  q: Queryer,
+  o: { id: string; userId: string; marketId: string; idempotencyKey: string; kind: string; side: string; qtyE6: bigint; leverageE2: number },
+): Promise<{ orderId: string; inserted: boolean }> {
+  const ins = await q.query<{ id: string }>(
+    `INSERT INTO orders(id,user_id,market_id,idempotency_key,kind,side,qty_e6,leverage_e2,status)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,'filled')
+     ON CONFLICT (user_id, idempotency_key) DO NOTHING RETURNING id`,
+    [o.id, o.userId, o.marketId, o.idempotencyKey, o.kind, o.side, o.qtyE6.toString(), o.leverageE2],
+  );
+  if (ins.rows[0]) return { orderId: ins.rows[0].id, inserted: true };
+  const existing = await q.query<{ id: string }>(`SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2`, [o.userId, o.idempotencyKey]);
+  return { orderId: existing.rows[0].id, inserted: false };
+}
+
+/** Replay an open result from a prior order (used by both the pre-tx fast path and the in-tx anchor). */
+async function replayOpen(q: Queryer, orderId: string): Promise<{ orderId: string; positionId: string; duplicate: true }> {
+  const f = await q.query<{ position_id: string }>(`SELECT position_id FROM fills WHERE order_id=$1 LIMIT 1`, [orderId]);
+  return { orderId, positionId: f.rows[0]?.position_id ?? '', duplicate: true };
+}
+
+/** Replay a close result from a prior order (used by both the pre-tx fast path and the in-tx anchor). */
+async function replayClose(q: Queryer, orderId: string): Promise<{ orderId: string; realizedPnlUusdc: string; closedQtyE6: string; remainingQtyE6: string }> {
+  const f = await q.query<{ realized_pnl_uusdc: string; qty_e6: string; position_id: string }>(
+    `SELECT realized_pnl_uusdc::text AS realized_pnl_uusdc, qty_e6::text AS qty_e6, position_id FROM fills WHERE order_id=$1 LIMIT 1`,
+    [orderId],
+  );
+  const remPos = f.rows[0] ? await getPositionById(q, f.rows[0].position_id) : null;
+  return {
+    orderId,
+    realizedPnlUusdc: f.rows[0]?.realized_pnl_uusdc ?? '0',
+    closedQtyE6: f.rows[0]?.qty_e6 ?? '0',
+    remainingQtyE6: remPos && remPos.status === 'open' ? remPos.qty_e6 : '0',
+  };
+}
+
 async function getLatestMarkIndex(q: Queryer, marketId: string): Promise<{ markE6: bigint; indexE6: bigint } | null> {
   const r = await q.query<{ m: string; i: string }>(
     `SELECT mark_price_e6::text AS m, index_price_e6::text AS i FROM marks WHERE market_id=$1 ORDER BY computed_at DESC LIMIT 1`,
@@ -156,10 +197,7 @@ async function validateMarketAndOrder(q: Queryer, input: OpenInput): Promise<Mar
 export async function openPosition(db: Db, userId: string, input: OpenInput): Promise<{ orderId: string; positionId: string; duplicate?: boolean }> {
   // fast-path idempotency, scoped to the user (keys are not a global namespace)
   const prior = await db.query<{ id: string }>(`SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2`, [userId, input.idempotencyKey]);
-  if (prior.rows[0]) {
-    const f = await db.query<{ position_id: string }>(`SELECT position_id FROM fills WHERE order_id=$1 LIMIT 1`, [prior.rows[0].id]);
-    return { orderId: prior.rows[0].id, positionId: f.rows[0]?.position_id ?? '', duplicate: true };
-  }
+  if (prior.rows[0]) return replayOpen(db, prior.rows[0].id);
 
   return withMarketLock(input.marketId, () =>
     db.tx(async (q) => {
@@ -173,17 +211,8 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
       // In-tx idempotency guard: the order row is the anchor. A racing duplicate inserts
       // nothing and replays the prior result instead of running the side effects twice.
       const orderId = randomUUID();
-      const ins = await q.query<{ id: string }>(
-        `INSERT INTO orders(id,user_id,market_id,idempotency_key,kind,side,qty_e6,leverage_e2,status)
-         VALUES($1,$2,$3,$4,'market',$5,$6,$7,'filled')
-         ON CONFLICT (user_id, idempotency_key) DO NOTHING RETURNING id`,
-        [orderId, userId, market.id, input.idempotencyKey, input.side, input.qtyE6.toString(), leverageE2],
-      );
-      if (ins.rows.length === 0) {
-        const p = await q.query<{ id: string }>(`SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2`, [userId, input.idempotencyKey]);
-        const f = await q.query<{ position_id: string }>(`SELECT position_id FROM fills WHERE order_id=$1 LIMIT 1`, [p.rows[0].id]);
-        return { orderId: p.rows[0].id, positionId: f.rows[0]?.position_id ?? '', duplicate: true };
-      }
+      const anchor = await anchorOrder(q, { id: orderId, userId, marketId: market.id, idempotencyKey: input.idempotencyKey, kind: 'market', side: input.side, qtyE6: input.qtyE6, leverageE2 });
+      if (!anchor.inserted) return replayOpen(q, anchor.orderId);
 
       const opp = input.side === 'long' ? 'short' : 'long';
       if (await getOpenPosition(q, userId, market.id, opp)) {
@@ -264,19 +293,7 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
 
 export async function closePosition(db: Db, userId: string, input: CloseInput): Promise<{ orderId: string; realizedPnlUusdc: string; closedQtyE6: string; remainingQtyE6: string }> {
   const prior = await db.query<{ id: string }>(`SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2`, [userId, input.idempotencyKey]);
-  if (prior.rows[0]) {
-    const f = await db.query<{ realized_pnl_uusdc: string; qty_e6: string; position_id: string }>(
-      `SELECT realized_pnl_uusdc::text AS realized_pnl_uusdc, qty_e6::text AS qty_e6, position_id FROM fills WHERE order_id=$1 LIMIT 1`,
-      [prior.rows[0].id],
-    );
-    const remPos = f.rows[0] ? await getPositionById(db, f.rows[0].position_id) : null;
-    return {
-      orderId: prior.rows[0].id,
-      realizedPnlUusdc: f.rows[0]?.realized_pnl_uusdc ?? '0',
-      closedQtyE6: f.rows[0]?.qty_e6 ?? '0',
-      remainingQtyE6: remPos && remPos.status === 'open' ? remPos.qty_e6 : '0',
-    };
-  }
+  if (prior.rows[0]) return replayClose(db, prior.rows[0].id);
 
   const pos0 = await getPositionById(db, input.positionId);
   if (!pos0 || pos0.user_id !== userId) throw new HttpError(404, 'position not found');
@@ -305,26 +322,8 @@ export async function closePosition(db: Db, userId: string, input: CloseInput): 
       // In-tx idempotency anchor BEFORE any side effects: a racing duplicate (same user+key)
       // replays the prior result instead of re-running margin/PnL/fee.
       const orderId = randomUUID();
-      const ins = await q.query<{ id: string }>(
-        `INSERT INTO orders(id,user_id,market_id,idempotency_key,kind,side,qty_e6,leverage_e2,status)
-         VALUES($1,$2,$3,$4,'reduce_only',$5,$6,$7,'filled')
-         ON CONFLICT (user_id, idempotency_key) DO NOTHING RETURNING id`,
-        [orderId, userId, market.id, input.idempotencyKey, pos.side, closeQty.toString(), pos.leverage_e2],
-      );
-      if (ins.rows.length === 0) {
-        const p = await q.query<{ id: string }>(`SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2`, [userId, input.idempotencyKey]);
-        const f = await q.query<{ realized_pnl_uusdc: string; qty_e6: string; position_id: string }>(
-          `SELECT realized_pnl_uusdc::text AS realized_pnl_uusdc, qty_e6::text AS qty_e6, position_id FROM fills WHERE order_id=$1 LIMIT 1`,
-          [p.rows[0].id],
-        );
-        const remPos = f.rows[0] ? await getPositionById(q, f.rows[0].position_id) : null;
-        return {
-          orderId: p.rows[0].id,
-          realizedPnlUusdc: f.rows[0]?.realized_pnl_uusdc ?? '0',
-          closedQtyE6: f.rows[0]?.qty_e6 ?? '0',
-          remainingQtyE6: remPos && remPos.status === 'open' ? remPos.qty_e6 : '0',
-        };
-      }
+      const anchor = await anchorOrder(q, { id: orderId, userId, marketId: market.id, idempotencyKey: input.idempotencyKey, kind: 'reduce_only', side: pos.side, qtyE6: closeQty, leverageE2: pos.leverage_e2 });
+      if (!anchor.inserted) return replayClose(q, anchor.orderId);
 
       await settlePositionFunding(q, pos, market.id); // settle accrued funding first
       const entry = BigInt(pos.avg_entry_e6);
