@@ -5,26 +5,24 @@ export function Navbar({ activeView, setActiveView }) {
   return (
     <nav className="navbar">
       <div className="nav-brand">
-        <div style={{ width: 24, height: 24, background: 'var(--accent)', borderRadius: '50%' }}></div>
-        TradeX
+        <div style={{ width: 24, height: 24, background: 'var(--accent)', borderRadius: '4px' }}></div>
+        <span style={{ fontWeight: 'bold', fontSize: '1.25rem' }}>PokeX</span>
       </div>
       
       <div className="nav-links">
-        <a 
-          href="#" 
+        <button 
           className={`nav-link ${activeView === 'trade' ? 'active' : ''}`}
-          onClick={(e) => { e.preventDefault(); setActiveView('trade'); }}
+          onClick={() => setActiveView('trade')}
         >
-          Trade
-        </a>
-        <a 
-          href="#" 
+          Exchange
+        </button>
+        <button 
           className={`nav-link ${activeView === 'browse' ? 'active' : ''}`}
-          onClick={(e) => { e.preventDefault(); setActiveView('browse'); }}
+          onClick={() => setActiveView('browse')}
         >
-          Browse Cards
-        </a>
-        <a href="#" className="nav-link">Portfolio</a>
+          Marketplace
+        </button>
+        <a href="#" className="nav-link">Account</a>
       </div>
       
       <div className="nav-actions">
