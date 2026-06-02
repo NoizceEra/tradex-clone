@@ -8,7 +8,7 @@ const getPrice = (card) => {
   return p.holofoil?.market || p.normal?.market || p['1stEditionHolofoil']?.market || 0;
 };
 
-export function OrderEntry({ selectedCard, portfolio, executeTrade }) {
+export function OrderEntry({ selectedCard, portfolio, executeTrade, supplementalData }) {
   const [modalCard, setModalCard] = React.useState(null);
   const [side, setSide] = useState('buy');
   const [amount, setAmount] = useState('');
@@ -33,6 +33,39 @@ export function OrderEntry({ selectedCard, portfolio, executeTrade }) {
         )}
         {selectedCard && (
           <div className="preview-label">{selectedCard.name} #{selectedCard.number}</div>
+        )}
+
+        {supplementalData?.tcgdex && (
+          <div className="mechanics-panel" style={{fontSize: '0.45rem', padding: '0.75rem', background: 'var(--bg-2)', border: '1px solid var(--border)', width: '100%', marginTop: '0.5rem', textAlign: 'left'}}>
+            <div style={{color:'var(--gold)', marginBottom:'0.4rem', textTransform: 'uppercase'}}>Stats & Mechanics</div>
+            <div style={{display:'flex', justifyContent:'space-between', color: 'var(--text-muted)'}}>
+              <span>HP: <strong style={{color:'var(--text)'}}>{supplementalData.tcgdex.hp || 'N/A'}</strong></span>
+              <span>Retreat: <strong style={{color:'var(--text)'}}>{supplementalData.tcgdex.retreat || '0'}</strong></span>
+            </div>
+            {supplementalData.tcgdex.attacks?.map((atk, i) => (
+              <div key={i} style={{marginTop: '0.4rem', color: 'var(--text-muted)'}}>
+                <strong style={{color:'var(--text)'}}>{atk.name}</strong> {atk.damage ? `(${atk.damage})` : ''}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {supplementalData?.justTcg && (
+          <div className="mechanics-panel" style={{fontSize: '0.45rem', padding: '0.75rem', background: 'var(--bg-2)', border: '1px solid var(--border)', width: '100%', marginTop: '0.5rem', textAlign: 'left'}}>
+            <div style={{color:'var(--gold)', marginBottom:'0.4rem', textTransform: 'uppercase'}}>JustTCG Market Info</div>
+            <div style={{color: 'var(--text-muted)'}}>
+              Live graded pricing data retrieved.
+            </div>
+            {supplementalData.justTcg.prices && (
+              <div style={{marginTop: '0.4rem'}}>
+                {Object.entries(supplementalData.justTcg.prices).slice(0, 3).map(([key, val]) => (
+                  <div key={key} style={{display:'flex', justifyContent:'space-between'}}>
+                    <span>{key}</span><strong style={{color:'var(--success)'}}>${val}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

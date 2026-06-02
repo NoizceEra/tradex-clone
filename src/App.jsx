@@ -11,6 +11,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState('trade');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [supplementalData, setSupplementalData] = useState(null);
 
   const [portfolio, setPortfolio] = useState(() => {
     const saved = localStorage.getItem('pokeX_portfolio');
@@ -79,6 +80,29 @@ function App() {
     fetchCards();
   }, []);
 
+  useEffect(() => {
+    async function fetchSupplemental() {
+      if (!selectedCard) return;
+      setSupplementalData(null);
+      try {
+        const tcgRes = await fetch(`https://api.tcgdex.net/v2/en/cards/${selectedCard.id}`);
+        const tcgdexData = tcgRes.ok ? await tcgRes.json() : null;
+
+        // Fetch JustTCG data (using tcgplayer product id if available)
+        const tcgplayerId = selectedCard.tcgplayer?.productId || selectedCard.id;
+        const justRes = await fetch(`https://api.justtcg.com/cards/${tcgplayerId}`, {
+          headers: { 'X-API-Key': 'tcg_3e15742bfe6e46a39d7f4cc3c6e6835a' }
+        });
+        const justTcgData = justRes.ok ? await justRes.json() : null;
+
+        setSupplementalData({ tcgdex: tcgdexData, justTcg: justTcgData });
+      } catch (e) {
+        console.error('Failed to fetch supplemental data', e);
+      }
+    }
+    fetchSupplemental();
+  }, [selectedCard]);
+
   // When user clicks "TRADE" from the binder, switch to exchange view
   const handleTradeCard = (card) => {
     setSelectedCard(card);
@@ -104,7 +128,8 @@ function App() {
           <OrderEntry 
             selectedCard={selectedCard} 
             portfolio={portfolio} 
-            executeTrade={executeTrade} 
+            executeTrade={executeTrade}
+            supplementalData={supplementalData}
           />
         </div>
       ) : (

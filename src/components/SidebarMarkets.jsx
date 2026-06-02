@@ -118,7 +118,10 @@ export function SidebarMarkets({ cards, loading, selectedCard, onSelectCard, col
                 <img src={card.images.small} alt={card.name} className="market-thumb" />
                 <div className="market-item-info">
                   <span className="market-item-name">{card.name}</span>
-                  <span className="market-item-set">{getSet(card)} #{card.number}</span>
+                  <div className="market-item-set-logo">
+                    <img src={`https://assets.tcgdex.net/en/${card.set.series.toLowerCase().replace(' ', '')}/${card.set.id}/logo.webp`} alt={getSet(card)} onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='inline'; }} style={{height: '12px', objectFit: 'contain'}} />
+                    <span style={{display: 'none', fontSize: '0.4rem', color: 'var(--text-muted)'}}>{getSet(card)} #{card.number}</span>
+                  </div>
                 </div>
               </div>
               <div className="market-item-right">
