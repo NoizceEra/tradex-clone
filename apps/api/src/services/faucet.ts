@@ -4,8 +4,8 @@ import type { Db } from '../db/client.ts';
 import { getOrCreateUserAccount, getOrCreateSystemAccount, postTxn, getBalance } from './ledger.ts';
 import { usdc } from '../money.ts';
 
-/** Play-money cap: don't let a user faucet beyond this available balance. */
-const MAX_AVAILABLE_UUSDC = usdc(1_000_000);
+/** Play-money cap: don't let a user's available balance exceed this (faucet + referral bonus). */
+export const MAX_AVAILABLE_UUSDC = usdc(1_000_000);
 
 export interface UserBalances {
   availableUusdc: bigint;

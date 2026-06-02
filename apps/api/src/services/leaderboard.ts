@@ -5,8 +5,8 @@ export interface LeaderboardRow {
   rank: number;
   userId: string;
   pubkey: string;
-  realizedPnlUusdc: string; // net booked PnL: (collateral + margin) - net deposits  (fees & funding included)
-  equityUusdc: string; // collateral + margin + unrealized PnL
+  realizedPnlUusdc: string; // net booked PnL: (cash + LP value) - net deposits  (fees & funding included)
+  equityUusdc: string; // cash + LP value + unrealized PnL
   volumeUusdc: string; // Σ notional traded across all fills
 }
 
@@ -15,8 +15,11 @@ export interface LeaderboardRow {
  * reconcile with balances:
  *   net deposits   = Σ faucet + referral credits to the user's collateral
  *   cash           = collateral balance + locked margin
- *   realized PnL   = cash - net deposits        (what trading/fees/funding actually netted)
- *   equity         = cash + unrealized PnL on open positions (marked to the latest mark)
+ *   LP value       = current worth of the user's LP shares (shares * NAV / total shares)
+ *   realized PnL   = cash + LP value - net deposits   (trading/fees/funding + LP yield)
+ *   equity         = cash + LP value + unrealized PnL on open positions (marked to latest)
+ * LP value must be included: providing to the pool moves capital out of collateral into the
+ * LP_POOL system account, so without it a pure LP provider would look like a big trading loss.
  * Computed with a handful of set-based queries + in-memory aggregation (fine for the MVP's user count).
  */
 export async function getLeaderboard(
@@ -25,7 +28,7 @@ export async function getLeaderboard(
 ): Promise<{ rows: LeaderboardRow[]; you: LeaderboardRow | null; total: number }> {
   const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
 
-  const [users, balances, deposits, volume, positions] = await Promise.all([
+  const [users, balances, deposits, volume, positions, pool, lpShares] = await Promise.all([
     db.query<{ id: string; solana_pubkey: string }>(`SELECT id, solana_pubkey FROM users`),
     db.query<{ user_id: string; type: string; amt: string }>(
       `SELECT a.user_id, a.type, COALESCE(b.amount_uusdc, 0)::text AS amt
@@ -47,6 +50,12 @@ export async function getLeaderboard(
               (SELECT mark_price_e6::text FROM marks m WHERE m.market_id = p.market_id ORDER BY computed_at DESC LIMIT 1) AS mark_e6
        FROM positions p WHERE p.status = 'open'`,
     ),
+    // LP pool NAV (the LP_POOL ledger balance) + outstanding shares, to value each LP position
+    db.query<{ nav: string; shares: string }>(
+      `SELECT COALESCE((SELECT b.amount_uusdc FROM accounts a JOIN balances b ON b.account_id = a.id WHERE a.type = 'LP_POOL' LIMIT 1), 0)::text AS nav,
+              COALESCE((SELECT total_shares FROM lp_pool WHERE id = 'pool'), 0)::text AS shares`,
+    ),
+    db.query<{ user_id: string; shares: string }>(`SELECT user_id, shares::text AS shares FROM lp_positions WHERE shares > 0`),
   ]);
 
   const cash = new Map<string, bigint>(); // collateral + locked margin
@@ -54,6 +63,12 @@ export async function getLeaderboard(
 
   const deposited = new Map<string, bigint>();
   for (const r of deposits.rows) deposited.set(r.user_id, BigInt(r.amt));
+
+  // value each user's LP shares at the current share price (shares * NAV / totalShares), like lp.ts
+  const nav = BigInt(pool.rows[0]?.nav ?? '0');
+  const totalShares = BigInt(pool.rows[0]?.shares ?? '0');
+  const lpValue = new Map<string, bigint>();
+  for (const r of lpShares.rows) lpValue.set(r.user_id, totalShares > 0n ? (BigInt(r.shares) * nav) / totalShares : 0n);
 
   const vol = new Map<string, bigint>();
   for (const r of volume.rows) vol.set(r.user_id, BigInt(r.vol) / 1_000_000n); // qty_e6*price_e6 (e12) -> notional micro-USDC (e6)
@@ -67,7 +82,7 @@ export async function getLeaderboard(
 
   const ranked = users.rows
     .map((u) => {
-      const c = cash.get(u.id) ?? 0n;
+      const c = (cash.get(u.id) ?? 0n) + (lpValue.get(u.id) ?? 0n); // total cash incl. LP position value
       const realized = c - (deposited.get(u.id) ?? 0n);
       return {
         userId: u.id,

@@ -15,7 +15,9 @@ const { creditFaucet, getUserBalances } = await import('./faucet.ts');
 const { openPosition, closePosition, getUserPositions } = await import('./engine.ts');
 const { assignReferralCode, getReferralInfo, redeemReferral } = await import('./referral.ts');
 const { getLeaderboard } = await import('./leaderboard.ts');
+const { lpDeposit } = await import('./lp.ts');
 const { reconcile } = await import('./reconcile.ts');
+const { usdc } = await import('../money.ts');
 
 await initDb();
 const db = await getDb();
@@ -68,6 +70,18 @@ test('redeeming a referral code attributes once and pays both parties', async ()
 
   // can't redeem twice
   await assert.rejects(redeemReferral(db, newbie, code), /already redeemed/);
+});
+
+test('leaderboard counts LP capital as account value, not a phantom trading loss', async () => {
+  // runs while the pool is still at par, so the LP stake is worth exactly what was deposited
+  const lp = await newUser(); // faucets 10,000
+  await lpDeposit(db, lp, usdc(5_000));
+
+  const board = await getLeaderboard(db, { viewerUserId: lp });
+  const row = board.you;
+  assert.ok(row, 'viewer row is present');
+  assert.equal(row.realizedPnlUusdc, '0', 'parking capital in the LP pool is not a trading loss');
+  assert.equal(row.equityUusdc, usdc(10_000).toString(), 'equity reflects total account value including the LP stake');
 });
 
 test('leaderboard ranks a profitable trader above a flat account', async () => {

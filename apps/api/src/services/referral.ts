@@ -2,7 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { config } from '../config.ts';
 import { HttpError } from '../errors.ts';
 import type { Db, Queryer } from '../db/client.ts';
-import { getOrCreateUserAccount, getOrCreateSystemAccount, postTxn } from './ledger.ts';
+import { getOrCreateUserAccount, getOrCreateSystemAccount, getBalance, postTxn } from './ledger.ts';
+import { MAX_AVAILABLE_UUSDC } from './faucet.ts';
 import { usdc } from '../money.ts';
 
 // Codes are short and human-shareable. The alphabet omits 0/O/1/I to avoid transcription errors.
@@ -24,12 +25,20 @@ function randomCode(): string {
 export async function assignReferralCode(q: Queryer, userId: string): Promise<string> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const code = randomCode();
-    const set = await q.query<{ referral_code: string }>(
-      `UPDATE users SET referral_code=$1
-       WHERE id=$2 AND referral_code IS NULL AND NOT EXISTS (SELECT 1 FROM users WHERE referral_code=$1)
-       RETURNING referral_code`,
-      [code, userId],
-    );
+    let set;
+    try {
+      set = await q.query<{ referral_code: string }>(
+        `UPDATE users SET referral_code=$1
+         WHERE id=$2 AND referral_code IS NULL AND NOT EXISTS (SELECT 1 FROM users WHERE referral_code=$1)
+         RETURNING referral_code`,
+        [code, userId],
+      );
+    } catch (e) {
+      // A concurrent signup can win the same candidate between our NOT EXISTS check and commit,
+      // tripping uq_users_referral_code (the only unique index on this UPDATE) — just retry.
+      if ((e as { code?: string })?.code === '23505') continue;
+      throw e;
+    }
     if (set.rows[0]) return set.rows[0].referral_code;
     // Either the user already had a code, or the candidate collided — if it's the former, return it.
     const cur = await q.query<{ referral_code: string | null }>(`SELECT referral_code FROM users WHERE id=$1`, [userId]);
@@ -89,29 +98,42 @@ export async function redeemReferral(db: Db, userId: string, rawCode: string): P
   const bonus = usdc(config.referralBonusUsd);
   const credited = !config.realFunds && bonus > 0n;
 
+  let creditedToRedeemer = 0n;
+
   await db.tx(async (q) => {
+    // Attribution is recorded once regardless of whether a bonus is paid (race-safe via IS NULL).
     const set = await q.query<{ id: string }>(
       `UPDATE users SET referred_by=$1, referred_at=now() WHERE id=$2 AND referred_by IS NULL RETURNING id`,
       [referrerId, userId],
     );
     if (set.rows.length === 0) throw new HttpError(400, 'you have already redeemed a referral code');
 
-    if (credited) {
-      const faucet = await getOrCreateSystemAccount(q, 'FAUCET_SOURCE');
-      for (const beneficiary of [userId, referrerId]) {
-        const coll = await getOrCreateUserAccount(q, beneficiary, 'USER_COLLATERAL');
-        await postTxn(q, {
-          reason: 'REFERRAL_BONUS',
-          refType: 'user',
-          refId: beneficiary,
-          entries: [
-            { accountId: coll, amount: bonus },
-            { accountId: faucet, amount: -bonus },
-          ],
-        });
-      }
+    if (!credited) return;
+
+    // The referrer is only paid for their first N referrals (anti-farming); the redeemer is always
+    // a candidate. Each leg is clamped to the per-account play-money cap, mirroring the faucet.
+    const priorReferrals = await q.query<{ n: string }>(`SELECT count(*)::text AS n FROM users WHERE referred_by=$1 AND id<>$2`, [referrerId, userId]);
+    const payReferrer = Number(priorReferrals.rows[0].n) < config.maxReferralsPaid;
+    const beneficiaries = payReferrer ? [userId, referrerId] : [userId];
+
+    const faucet = await getOrCreateSystemAccount(q, 'FAUCET_SOURCE');
+    for (const beneficiary of beneficiaries) {
+      const coll = await getOrCreateUserAccount(q, beneficiary, 'USER_COLLATERAL');
+      const headroom = MAX_AVAILABLE_UUSDC - (await getBalance(q, coll));
+      if (headroom <= 0n) continue; // already at the play-money cap; skip this leg
+      const credit = bonus < headroom ? bonus : headroom; // clamp so balance can't exceed the cap
+      if (beneficiary === userId) creditedToRedeemer = credit;
+      await postTxn(q, {
+        reason: 'REFERRAL_BONUS',
+        refType: 'user',
+        refId: beneficiary,
+        entries: [
+          { accountId: coll, amount: credit },
+          { accountId: faucet, amount: -credit },
+        ],
+      });
     }
   });
 
-  return { ok: true, bonusUsd: config.referralBonusUsd, credited };
+  return { ok: true, bonusUsd: config.referralBonusUsd, credited: creditedToRedeemer > 0n };
 }
