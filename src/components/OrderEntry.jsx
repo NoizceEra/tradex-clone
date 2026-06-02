@@ -8,7 +8,7 @@ const getPrice = (card) => {
   return p.holofoil?.market || p.normal?.market || p['1stEditionHolofoil']?.market || 0;
 };
 
-export function OrderEntry({ selectedCard }) {
+export function OrderEntry({ selectedCard, portfolio, executeTrade }) {
   const [modalCard, setModalCard] = React.useState(null);
   const [side, setSide] = useState('buy');
   const [amount, setAmount] = useState('');
@@ -58,18 +58,18 @@ export function OrderEntry({ selectedCard }) {
         {/* Amount Input */}
         <div className="form-field">
           <label className="field-label">
-            <span>AMOUNT (USDC)</span>
-            <span className="field-hint">Balance: 0.00</span>
+            <span>QUANTITY (CARDS)</span>
+            <span className="field-hint">Balance: ${portfolio ? portfolio.balance.toFixed(2) : '0.00'}</span>
           </label>
           <div className="field-input-wrap">
             <input
               type="number"
               min="0"
-              placeholder="0.00"
+              placeholder="0"
               value={amount}
               onChange={e => setAmount(e.target.value)}
             />
-            <span className="field-unit">USDC</span>
+            <span className="field-unit">QTY</span>
           </div>
         </div>
 
@@ -81,7 +81,7 @@ export function OrderEntry({ selectedCard }) {
           </div>
           <div className="order-info-row">
             <span>Est. Cards</span>
-            <span>{price > 0 && amount ? (parseFloat(amount) / price).toFixed(4) : '—'}</span>
+            <span>{amount ? parseFloat(amount).toFixed(2) : '—'}</span>
           </div>
           <div className="order-info-row total">
             <span>Total</span>
@@ -97,7 +97,11 @@ export function OrderEntry({ selectedCard }) {
         {/* Place Order */}
         <button
             className={`place-order-btn ${side}`}
-            disabled={!selectedCard || !amount}
+            disabled={!selectedCard || !amount || parseFloat(amount) <= 0}
+            onClick={() => {
+              executeTrade(selectedCard, side, parseFloat(amount), price);
+              setAmount('');
+            }}
           >
             {side === 'buy' ? '▶ BUY' : '▶ SELL'} {selectedCard ? selectedCard.name.toUpperCase() : '—'}
           </button>

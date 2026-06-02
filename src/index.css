@@ -79,10 +79,15 @@ body {
 
 .main-grid {
   display: grid;
-  grid-template-columns: 220px 1fr 280px;
+  grid-template-columns: 320px 1fr 280px;
   flex: 1;
   gap: 0;
   overflow: hidden;
+  transition: grid-template-columns 0.3s ease;
+}
+
+.main-grid.sidebar-collapsed {
+  grid-template-columns: 60px 1fr 280px;
 }
 
 /* ─── SIDEBAR ────────────────────────────────── */
@@ -93,6 +98,35 @@ body {
   flex-direction: column;
   overflow: hidden;
   height: calc(100vh - 64px);
+  transition: width 0.3s ease;
+}
+
+.sidebar.collapsed .sidebar-search,
+.sidebar.collapsed .sidebar-col-headers,
+.sidebar.collapsed .card-preview,
+.sidebar.collapsed .market-item-info,
+.sidebar.collapsed .market-item-right,
+.sidebar.collapsed .sidebar-tab-btn,
+.sidebar.collapsed .sidebar-header span {
+  display: none !important;
+}
+
+.sidebar.collapsed .market-item {
+  padding: 0.6rem 0.2rem;
+  justify-content: center;
+}
+
+.sidebar.collapsed .market-item-left {
+  justify-content: center;
+  margin: 0;
+}
+
+.sidebar.collapsed .sidebar-header {
+  justify-content: center !important;
+}
+
+.sidebar.collapsed .market-index {
+  display: none;
 }
 
 .sidebar-tabs {
@@ -422,7 +456,7 @@ body {
   flex: 1;
 }
 
-.order-side-toggle { display: flex; }
+.order-side-toggle { display: flex; gap: 0.5rem; }
 
 .side-btn {
   flex: 1;
@@ -436,8 +470,6 @@ body {
   transition: all 0.1s;
   letter-spacing: 1px;
 }
-
-.side-btn:first-child { border-right: none; }
 .side-btn.buy.active { background: rgba(63,185,80,0.15); color: var(--success); border-color: var(--success); }
 .side-btn.sell.active { background: rgba(248,81,73,0.15); color: var(--danger); border-color: var(--danger); }
 .side-btn:hover:not(.active) { background: var(--bg); color: var(--text); }

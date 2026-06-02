@@ -10,12 +10,59 @@ function App() {
   const [selectedCard, setSelectedCard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState('trade');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const [portfolio, setPortfolio] = useState(() => {
+    const saved = localStorage.getItem('pokeX_portfolio');
+    return saved ? JSON.parse(saved) : { balance: 10000, positions: {} };
+  });
+
+  useEffect(() => {
+    localStorage.setItem('pokeX_portfolio', JSON.stringify(portfolio));
+  }, [portfolio]);
+
+  const executeTrade = (card, side, amount, price) => {
+    setPortfolio(prev => {
+      const newPortfolio = { ...prev };
+      const cost = amount * price;
+      
+      if (side === 'buy') {
+        if (newPortfolio.balance < cost) {
+          alert('Insufficient funds');
+          return prev;
+        }
+        newPortfolio.balance -= cost;
+        const currentPos = newPortfolio.positions[card.id] || { amount: 0, avgPrice: 0, card };
+        const totalAmount = currentPos.amount + amount;
+        const totalCost = (currentPos.amount * currentPos.avgPrice) + cost;
+        newPortfolio.positions[card.id] = {
+          ...currentPos,
+          amount: totalAmount,
+          avgPrice: totalCost / totalAmount
+        };
+      } else {
+        const currentPos = newPortfolio.positions[card.id] || { amount: 0, avgPrice: 0, card };
+        if (currentPos.amount < amount) {
+          alert('Insufficient position to sell');
+          return prev;
+        }
+        newPortfolio.balance += cost;
+        currentPos.amount -= amount;
+        if (currentPos.amount === 0) {
+          delete newPortfolio.positions[card.id];
+        } else {
+          newPortfolio.positions[card.id] = currentPos;
+        }
+      }
+      return newPortfolio;
+    });
+  };
 
   useEffect(() => {
     async function fetchCards() {
       try {
         const response = await fetch(
-          'https://api.pokemontcg.io/v2/cards?q=set.id:base1 supertype:Pokémon&orderBy=-tcgplayer.prices.holofoil.market&pageSize=20',
+          'https://api.pokemontcg.io/v2/cards?q=set.id:base1 supertype:Pokémon&orderBy=-tcgplayer.prices.holofoil.market&pageSize=60',
           { headers: { 'X-Api-Key': '07c20d0a64mshf9bf046e5c2971dp18eebbjsnd624c80d8b9b' } }
         );
         const data = await response.json();
@@ -43,15 +90,22 @@ function App() {
       <Navbar activeView={activeView} setActiveView={setActiveView} />
 
       {activeView === 'trade' ? (
-        <div className="main-grid">
+        <div className={`main-grid ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
           <SidebarMarkets
             cards={cards}
             loading={loading}
             selectedCard={selectedCard}
             onSelectCard={setSelectedCard}
+            collapsed={sidebarCollapsed}
+            setCollapsed={setSidebarCollapsed}
+            portfolio={portfolio}
           />
           <TradingView selectedCard={selectedCard} />
-          <OrderEntry selectedCard={selectedCard} />
+          <OrderEntry 
+            selectedCard={selectedCard} 
+            portfolio={portfolio} 
+            executeTrade={executeTrade} 
+          />
         </div>
       ) : (
         <Marketplace

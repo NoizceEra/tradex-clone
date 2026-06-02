@@ -9,10 +9,9 @@ const getPrice = (card) => {
 
 const getSet = (card) => card?.set?.name || '';
 
-export function SidebarMarkets({ cards, loading, selectedCard, onSelectCard }) {
+export function SidebarMarkets({ cards, loading, selectedCard, onSelectCard, collapsed, setCollapsed, portfolio }) {
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState('markets');
-  const [collapsed, setCollapsed] = useState(false);
 
   const filtered = cards.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase())
@@ -59,22 +58,6 @@ export function SidebarMarkets({ cards, loading, selectedCard, onSelectCard }) {
         <span>PRICE</span>
       </div>
 
-      {/* Card Preview */}
-      <div className="card-preview" onClick={() => setModalCard(selectedCard)} style={{cursor:selectedCard?'pointer':'default'}}>
-        {selectedCard ? (
-            <img
-              src={selectedCard.images.large}
-              alt={selectedCard.name}
-              className="preview-img"
-            />
-          ) : (
-            <div className="card-placeholder">Select a card<br/>from the market</div>
-          )}
-        {selectedCard && (
-            <div className="preview-label">{selectedCard.name} #{selectedCard.number}</div>
-          )}
-      </div>
-
       {/* List */}
       <div className="market-list">
         {loading && (
@@ -83,7 +66,38 @@ export function SidebarMarkets({ cards, loading, selectedCard, onSelectCard }) {
           </div>
         )}
         {tab === 'positions' && !loading && (
-          <div className="empty-state">No open positions.<br />Connect wallet to begin.</div>
+          (!portfolio || Object.keys(portfolio.positions).length === 0) ? (
+            <div className="empty-state">No open positions.<br />Buy cards to begin.</div>
+          ) : (
+            Object.values(portfolio.positions).map((pos, idx) => {
+              const card = pos.card;
+              const price = getPrice(card);
+              const isActive = selectedCard?.id === card.id;
+              
+              return (
+                <div
+                  key={card.id}
+                  className={`market-item ${isActive ? 'selected' : ''}`}
+                  onClick={() => onSelectCard(card)}
+                >
+                  <div className="market-item-left">
+                    <span className="market-index" style={{fontSize:'0.4rem',color:'var(--text-muted)',marginRight:'0.3rem'}}>{idx + 1}.</span>
+                    <img src={card.images.small} alt={card.name} className="market-thumb" />
+                    <div className="market-item-info">
+                      <span className="market-item-name">{card.name}</span>
+                      <span className="market-item-set">Qty: {pos.amount}</span>
+                    </div>
+                  </div>
+                  <div className="market-item-right">
+                    <span className="market-item-price">${(pos.amount * price).toFixed(2)}</span>
+                    <span className="market-item-change" style={{color: 'var(--text-muted)'}}>
+                      Avg: ${pos.avgPrice.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })
+          )
         )}
         {tab === 'markets' && filtered.map((card, idx) => {
           const price = getPrice(card);
