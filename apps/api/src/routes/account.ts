@@ -3,14 +3,18 @@ import { FaucetRequest } from '@pokex/shared-types';
 import { getDb } from '../db/client.ts';
 import { authenticate } from '../plugins/auth.ts';
 import { creditFaucet, getUserBalances } from '../services/faucet.ts';
+import { getUserUnrealizedPnl } from '../services/engine.ts';
 
 export async function accountRoutes(app: FastifyInstance): Promise<void> {
   app.get('/account/balance', { preHandler: authenticate }, async (req) => {
-    const b = await getUserBalances(await getDb(), req.userId!);
+    const db = await getDb();
+    const b = await getUserBalances(db, req.userId!);
+    const uPnl = await getUserUnrealizedPnl(db, req.userId!);
     return {
       availableUusdc: b.availableUusdc.toString(),
       lockedMarginUusdc: b.lockedMarginUusdc.toString(),
-      equityUusdc: b.equityUusdc.toString(),
+      unrealizedPnlUusdc: uPnl.toString(),
+      equityUusdc: (b.availableUusdc + b.lockedMarginUusdc + uPnl).toString(),
     };
   });
 

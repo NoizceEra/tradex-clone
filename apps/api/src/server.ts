@@ -5,6 +5,7 @@ import { HttpError } from './errors.ts';
 import { authRoutes } from './routes/auth.ts';
 import { accountRoutes } from './routes/account.ts';
 import { marketRoutes } from './routes/markets.ts';
+import { orderRoutes } from './routes/orders.ts';
 import { registerWs } from './plugins/ws.ts';
 
 /**
@@ -49,6 +50,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(authRoutes);
   await app.register(accountRoutes);
   await app.register(marketRoutes);
+  await app.register(orderRoutes);
 
   return app;
 }
