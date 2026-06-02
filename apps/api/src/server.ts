@@ -4,6 +4,8 @@ import { config } from './config.ts';
 import { HttpError } from './errors.ts';
 import { authRoutes } from './routes/auth.ts';
 import { accountRoutes } from './routes/account.ts';
+import { marketRoutes } from './routes/markets.ts';
+import { registerWs } from './plugins/ws.ts';
 
 /**
  * Build the Fastify instance. Routes for auth/markets/orders/account/lp and the
@@ -43,8 +45,10 @@ export async function buildServer(): Promise<FastifyInstance> {
     time: new Date().toISOString(),
   }));
 
+  await registerWs(app);
   await app.register(authRoutes);
   await app.register(accountRoutes);
+  await app.register(marketRoutes);
 
   return app;
 }
