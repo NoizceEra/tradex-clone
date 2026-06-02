@@ -115,6 +115,27 @@ test('order idempotency key prevents double execution', async () => {
   await closeAll(userId);
 });
 
+test('concurrent same-key partial close replays instead of double-charging or crashing', async () => {
+  const userId = await newUser();
+  await openPosition(db, userId, { marketId: market.id, side: 'long', qtyE6: 10_000_000n, leverage: 10, idempotencyKey: randomUUID() });
+  const [pos] = await getUserPositions(db, userId);
+  const key = randomUUID();
+
+  // two racing partial (50%) closes with the same key: one executes, the other must replay it
+  const [a, b] = await Promise.all([
+    closePosition(db, userId, { positionId: pos.id, fractionBps: 5_000, idempotencyKey: key }),
+    closePosition(db, userId, { positionId: pos.id, fractionBps: 5_000, idempotencyKey: key }),
+  ]);
+  assert.equal(a.closedQtyE6, U(5)); // 50% of 10 units
+  assert.equal(b.closedQtyE6, a.closedQtyE6); // replayed, not re-executed
+  assert.equal(a.orderId, b.orderId);
+
+  // the position was reduced exactly once (5 units left, still open), not twice
+  const [after1] = await getUserPositions(db, userId);
+  assert.equal(after1.qtyE6, U(5));
+  await closeAll(userId);
+});
+
 test('reconciler stays balanced after all trading activity', async () => {
   const report = await reconcile(db);
   assert.equal(report.ok, true, JSON.stringify(report, null, 2));

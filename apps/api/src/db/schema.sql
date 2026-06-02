@@ -202,7 +202,11 @@ CREATE TABLE IF NOT EXISTS orders (
   reject_reason   TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- idempotency is scoped per user, not global, so one user's key can't collide with another's
+-- idempotency is scoped per user, not global, so one user's key can't collide with another's.
+-- On upgraded DBs the old global UNIQUE survives CREATE TABLE IF NOT EXISTS; drop it so the
+-- composite (user_id, idempotency_key) is the only uniqueness (no-op on a fresh DB).
+ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_idempotency_key_key;
+DROP INDEX IF EXISTS orders_idempotency_key_key;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_user_idem ON orders(user_id, idempotency_key);
 
 CREATE TABLE IF NOT EXISTS fills (

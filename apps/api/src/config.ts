@@ -36,7 +36,7 @@ export const config = {
   pokemontcgApiKey: process.env.POKEMONTCG_API_KEY ?? '', // optional; keyless works
   pokemontcgBase: 'https://api.pokemontcg.io/v2',
   oracleRefreshMs: num('ORACLE_REFRESH_MS', 6 * 60 * 60 * 1000), // 6h; source updates ~daily
-  oraclePageSize: num('ORACLE_PAGE_SIZE', 500), // how many top cards to track
+  oraclePageSize: num('ORACLE_PAGE_SIZE', 250), // pokemontcg.io v2 caps pageSize at 250 (clamps silently); >250 is a no-op
 
   // JustTCG graded (PSA-10) pricing — server-side, optional. When set, the Graded index
   // becomes tradeable; without it, Graded stays gated.

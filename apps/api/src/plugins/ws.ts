@@ -16,23 +16,18 @@ const isPrivate = (ch: string) => WS_PRIVATE_CHANNELS.some((p) => ch.startsWith(
 
 /**
  * WebSocket hub at /ws. Public channels (mark/stats/oi/funding) are open. Private per-user
- * channels require authentication: the client passes an access token via `?token=` on connect
- * or an {op:'auth', token} message, and may only subscribe to channels suffixed with its own
- * userId. Subscriptions wait on the in-flight auth so there's no auth/sub ordering race.
+ * channels require authentication: the client sends an {op:'auth', token} message and may only
+ * subscribe to channels suffixed with its own userId. Subscriptions wait on the in-flight auth so
+ * there's no auth/sub ordering race. The token is never accepted in the URL (which would log it).
  */
 export async function registerWs(app: FastifyInstance): Promise<void> {
   await app.register(websocket);
 
-  app.get('/ws', { websocket: true }, (socket: Sock, req) => {
+  app.get('/ws', { websocket: true }, (socket: Sock) => {
     const channels = new Set<string>();
     const seq = new Map<string, number>();
     let userId: string | null = null;
-
-    // authenticate from ?token=... if present (verified async; sub waits on this)
-    const queryToken = (req.query as { token?: string } | undefined)?.token;
-    let authReady: Promise<void> = queryToken
-      ? verifyAccessToken(queryToken).then((r) => { userId = r.userId; }).catch(() => { userId = null; })
-      : Promise.resolve();
+    let authReady: Promise<void> = Promise.resolve();
 
     const unsub = onMessage((m) => {
       if (!channels.has(m.channel)) return;

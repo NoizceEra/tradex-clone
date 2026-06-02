@@ -298,11 +298,35 @@ export async function closePosition(db: Db, userId: string, input: CloseInput): 
         throw new HttpError(409, 'position is liquidatable and will be liquidated; cannot close manually');
       }
 
-      await settlePositionFunding(q, pos, market.id); // settle accrued funding first
-
       const qty = BigInt(pos.qty_e6);
       const closeQty = input.fractionBps >= 10_000 ? qty : (qty * BigInt(input.fractionBps)) / 10_000n;
       if (closeQty <= 0n) throw new HttpError(400, 'nothing to close');
+
+      // In-tx idempotency anchor BEFORE any side effects: a racing duplicate (same user+key)
+      // replays the prior result instead of re-running margin/PnL/fee.
+      const orderId = randomUUID();
+      const ins = await q.query<{ id: string }>(
+        `INSERT INTO orders(id,user_id,market_id,idempotency_key,kind,side,qty_e6,leverage_e2,status)
+         VALUES($1,$2,$3,$4,'reduce_only',$5,$6,$7,'filled')
+         ON CONFLICT (user_id, idempotency_key) DO NOTHING RETURNING id`,
+        [orderId, userId, market.id, input.idempotencyKey, pos.side, closeQty.toString(), pos.leverage_e2],
+      );
+      if (ins.rows.length === 0) {
+        const p = await q.query<{ id: string }>(`SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2`, [userId, input.idempotencyKey]);
+        const f = await q.query<{ realized_pnl_uusdc: string; qty_e6: string; position_id: string }>(
+          `SELECT realized_pnl_uusdc::text AS realized_pnl_uusdc, qty_e6::text AS qty_e6, position_id FROM fills WHERE order_id=$1 LIMIT 1`,
+          [p.rows[0].id],
+        );
+        const remPos = f.rows[0] ? await getPositionById(q, f.rows[0].position_id) : null;
+        return {
+          orderId: p.rows[0].id,
+          realizedPnlUusdc: f.rows[0]?.realized_pnl_uusdc ?? '0',
+          closedQtyE6: f.rows[0]?.qty_e6 ?? '0',
+          remainingQtyE6: remPos && remPos.status === 'open' ? remPos.qty_e6 : '0',
+        };
+      }
+
+      await settlePositionFunding(q, pos, market.id); // settle accrued funding first
       const entry = BigInt(pos.avg_entry_e6);
       const pnl = unrealizedPnl(pos.side, closeQty, entry, markE6);
       const marginRel = (BigInt(pos.margin_uusdc) * closeQty) / qty;
@@ -353,13 +377,7 @@ export async function closePosition(db: Db, userId: string, input: CloseInput): 
         );
       }
 
-      const orderId = randomUUID();
-      await q.query(
-        `INSERT INTO orders(id,user_id,market_id,idempotency_key,kind,side,qty_e6,leverage_e2,status)
-         VALUES($1,$2,$3,$4,'reduce_only',$5,$6,$7,'filled')
-         ON CONFLICT (user_id, idempotency_key) DO NOTHING`,
-        [orderId, userId, market.id, input.idempotencyKey, pos.side, closeQty.toString(), pos.leverage_e2],
-      );
+      // fills references the orderId anchored at the top of the tx (guaranteed inserted)
       await q.query(
         `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,

@@ -46,7 +46,7 @@ test('ingest seeds card markets, indices, oracle prints and marks', async () => 
 
   const top100 = markets.find((m) => m.indexSlug === 'top-100')!;
   assert.equal(top100.tradeable, true);
-  assert.ok(top100.markE6 && Number(top100.markE6) / 1_000_000 > 1000, 'index value near base 1000');
+  assert.ok(top100.markE6 && Number(top100.markE6) / 1_000_000 >= 1000, 'index starts at its base value of 1000');
 
   const graded = markets.find((m) => m.indexSlug === 'graded')!;
   assert.equal(graded.tradeable, false);

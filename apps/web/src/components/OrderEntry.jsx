@@ -24,6 +24,8 @@ export function OrderEntry({ market, onTraded }) {
   useEffect(() => {
     if (!market?.id) return;
     let alive = true;
+    setDetails(null); // hide the prior market's panel during the new round-trip
+    setShowMore(false); // collapse so stale expanded details can't render under the new card
     api.getMarketDetails(market.id).then((d) => alive && setDetails(d)).catch(() => alive && setDetails(null));
     return () => {
       alive = false;
