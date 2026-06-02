@@ -1,0 +1,123 @@
+import { randomUUID } from 'node:crypto';
+import { HttpError } from '../errors.ts';
+import type { Db, Queryer } from '../db/client.ts';
+import { getOrCreateUserAccount, getOrCreateSystemAccount, getBalance, postTxn } from './ledger.ts';
+
+/**
+ * LP pool, ERC-4626 style. NAV = the LP_POOL ledger balance (real USDC LPs put in, plus
+ * net trader losses, minus net trader payouts — the pool is the counterparty). Deposits mint
+ * shares at the current share price; withdrawals burn shares at the current share price.
+ * Withdrawals cannot dip below the capital reserved against open trader interest.
+ */
+
+async function poolMeta(q: Queryer): Promise<{ totalShares: bigint; reserved: bigint }> {
+  const r = await q.query<{ s: string; r: string }>(
+    `SELECT total_shares::text AS s, reserved_for_oi_uusdc::text AS r FROM lp_pool WHERE id='pool'`,
+  );
+  return { totalShares: BigInt(r.rows[0]?.s ?? '0'), reserved: BigInt(r.rows[0]?.r ?? '0') };
+}
+
+export async function lpDeposit(db: Db, userId: string, amountUusdc: bigint): Promise<{ sharesMinted: string; navAfter: string }> {
+  if (amountUusdc <= 0n) throw new HttpError(400, 'amount must be positive');
+  return db.tx(async (q) => {
+    const lp = await getOrCreateSystemAccount(q, 'LP_POOL');
+    const coll = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
+    const available = await getBalance(q, coll);
+    if (available < amountUusdc) throw new HttpError(400, 'insufficient balance');
+
+    const nav = await getBalance(q, lp);
+    const { totalShares } = await poolMeta(q);
+    // bootstrap (or recover from a depleted pool): 1 share == 1 micro-USDC
+    const sharesMinted = totalShares <= 0n || nav <= 0n ? amountUusdc : (amountUusdc * totalShares) / nav;
+
+    await postTxn(q, {
+      reason: 'LP_DEPOSIT',
+      entries: [
+        { accountId: coll, amount: -amountUusdc },
+        { accountId: lp, amount: amountUusdc },
+      ],
+    });
+    await q.query(
+      `UPDATE lp_pool SET total_shares = total_shares + $1, total_assets_uusdc = $2, version = version + 1, updated_at = now() WHERE id='pool'`,
+      [sharesMinted.toString(), (nav + amountUusdc).toString()],
+    );
+    await q.query(
+      `INSERT INTO lp_positions(id, user_id, shares, cost_basis_uusdc) VALUES($1,$2,$3,$4)
+       ON CONFLICT(user_id) DO UPDATE SET shares = lp_positions.shares + EXCLUDED.shares,
+         cost_basis_uusdc = lp_positions.cost_basis_uusdc + EXCLUDED.cost_basis_uusdc, updated_at = now()`,
+      [randomUUID(), userId, sharesMinted.toString(), amountUusdc.toString()],
+    );
+    return { sharesMinted: sharesMinted.toString(), navAfter: (nav + amountUusdc).toString() };
+  });
+}
+
+export async function lpWithdraw(db: Db, userId: string, shares: bigint): Promise<{ payoutUusdc: string; navAfter: string }> {
+  if (shares <= 0n) throw new HttpError(400, 'shares must be positive');
+  return db.tx(async (q) => {
+    const lp = await getOrCreateSystemAccount(q, 'LP_POOL');
+    const coll = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
+    const pos = await q.query<{ s: string }>(`SELECT shares::text AS s FROM lp_positions WHERE user_id=$1`, [userId]);
+    const userShares = BigInt(pos.rows[0]?.s ?? '0');
+    if (shares > userShares) throw new HttpError(400, 'insufficient LP shares');
+
+    const nav = await getBalance(q, lp);
+    const { totalShares, reserved } = await poolMeta(q);
+    if (totalShares <= 0n || nav <= 0n) throw new HttpError(400, 'pool is depleted');
+    const payout = (shares * nav) / totalShares;
+    if (payout <= 0n) throw new HttpError(400, 'nothing to withdraw');
+    if (nav - payout < reserved) throw new HttpError(400, 'withdrawal would dip into capital backing open trades');
+
+    await postTxn(q, {
+      reason: 'LP_WITHDRAW',
+      entries: [
+        { accountId: lp, amount: -payout },
+        { accountId: coll, amount: payout },
+      ],
+    });
+    await q.query(
+      `UPDATE lp_pool SET total_shares = total_shares - $1, total_assets_uusdc = $2, version = version + 1, updated_at = now() WHERE id='pool'`,
+      [shares.toString(), (nav - payout).toString()],
+    );
+    await q.query(`UPDATE lp_positions SET shares = shares - $1, updated_at = now() WHERE user_id=$2`, [shares.toString(), userId]);
+    return { payoutUusdc: payout.toString(), navAfter: (nav - payout).toString() };
+  });
+}
+
+export interface PoolView {
+  navUusdc: string;
+  totalShares: string;
+  reservedUusdc: string;
+  sharePriceE6: string; // value of 1e6 shares, scaled — NAV*1e6/totalShares
+}
+
+export async function getPool(db: Db): Promise<PoolView> {
+  const lp = await getOrCreateSystemAccount(db, 'LP_POOL');
+  const nav = await getBalance(db, lp);
+  const { totalShares, reserved } = await poolMeta(db);
+  const sharePriceE6 = totalShares > 0n ? (nav * 1_000_000n) / totalShares : 1_000_000n;
+  return {
+    navUusdc: nav.toString(),
+    totalShares: totalShares.toString(),
+    reservedUusdc: reserved.toString(),
+    sharePriceE6: sharePriceE6.toString(),
+  };
+}
+
+export async function getLpPosition(db: Db, userId: string): Promise<{ shares: string; valueUusdc: string }> {
+  const pos = await db.query<{ s: string }>(`SELECT shares::text AS s FROM lp_positions WHERE user_id=$1`, [userId]);
+  const shares = BigInt(pos.rows[0]?.s ?? '0');
+  const lp = await getOrCreateSystemAccount(db, 'LP_POOL');
+  const nav = await getBalance(db, lp);
+  const { totalShares } = await poolMeta(db);
+  const value = totalShares > 0n ? (shares * nav) / totalShares : 0n;
+  return { shares: shares.toString(), valueUusdc: value.toString() };
+}
+
+/** Recompute pool-wide reserved capital = gross open notional across all markets. */
+export async function refreshReserved(q: Queryer): Promise<void> {
+  const r = await q.query<{ oi: string }>(
+    `SELECT COALESCE(SUM((qty_e6::numeric * avg_entry_e6::numeric) / 1000000), 0)::bigint::text AS oi
+     FROM positions WHERE status='open'`,
+  );
+  await q.query(`UPDATE lp_pool SET reserved_for_oi_uusdc = $1, updated_at = now() WHERE id='pool'`, [r.rows[0].oi]);
+}

@@ -1,11 +1,43 @@
 import { randomUUID } from 'node:crypto';
-import { notional, initialMargin, unrealizedPnl, liquidationPrice } from '@pokex/pricing';
+import { notional, initialMargin, unrealizedPnl, liquidationPrice, fee } from '@pokex/pricing';
 import { HttpError } from '../errors.ts';
+import { config } from '../config.ts';
 import type { Db, Queryer } from '../db/client.ts';
 import { getMarketById, type MarketRow } from './markets.ts';
 import { recomputeMark } from './marks.ts';
 import { getOrCreateUserAccount, getOrCreateSystemAccount, getBalance, postTxn } from './ledger.ts';
+import { refreshReserved } from './lp.ts';
+import { getCumulativeFundingE6, settlePositionFunding } from './funding.ts';
 import { publish } from './bus.ts';
+
+/** Charge a trading fee, split between LPs and platform revenue (a balanced ledger txn). */
+async function chargeFee(q: Queryer, userId: string, feeAmt: bigint, reason: string, refId: string): Promise<void> {
+  if (feeAmt <= 0n) return;
+  const coll = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
+  const lp = await getOrCreateSystemAccount(q, 'LP_POOL');
+  const rev = await getOrCreateSystemAccount(q, 'FEE_REVENUE');
+  const lpPart = (feeAmt * BigInt(config.feeLpSharePct)) / 100n;
+  const revPart = feeAmt - lpPart;
+  await postTxn(q, {
+    reason,
+    refType: 'fee',
+    refId,
+    entries: [
+      { accountId: coll, amount: -feeAmt },
+      { accountId: lp, amount: lpPart },
+      { accountId: rev, amount: revPart },
+    ],
+  });
+}
+
+async function sideOpenInterest(q: Queryer, marketId: string, side: string): Promise<bigint> {
+  const r = await q.query<{ oi: string }>(
+    `SELECT COALESCE(SUM((qty_e6::numeric * avg_entry_e6::numeric) / 1000000), 0)::bigint::text AS oi
+     FROM positions WHERE market_id=$1 AND side=$2 AND status='open'`,
+    [marketId, side],
+  );
+  return BigInt(r.rows[0].oi);
+}
 
 /**
  * The trading engine. One position lifecycle: open / increase / decrease / close, as
@@ -32,7 +64,7 @@ function withMarketLock<T>(marketId: string, fn: () => Promise<T>): Promise<T> {
 // ---- row helpers ----------------------------------------------------------
 const POS_COLS = `p.id, p.user_id, p.market_id, p.side, p.qty_e6::text AS qty_e6, p.avg_entry_e6::text AS avg_entry_e6,
   p.margin_uusdc::text AS margin_uusdc, p.leverage_e2, p.liq_price_e6::text AS liq_price_e6,
-  p.realized_pnl_uusdc::text AS realized_pnl_uusdc, p.status`;
+  p.realized_pnl_uusdc::text AS realized_pnl_uusdc, p.funding_index_snapshot_e6::text AS funding_index_snapshot_e6, p.status`;
 
 export interface PositionRow {
   id: string;
@@ -45,6 +77,7 @@ export interface PositionRow {
   leverage_e2: number;
   liq_price_e6: string;
   realized_pnl_uusdc: string;
+  funding_index_snapshot_e6: string;
   status: string;
 }
 
@@ -144,13 +177,20 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
       const notion = notional(input.qtyE6, markE6);
       const margin = initialMargin(notion, leverageE2);
       if (margin <= 0n) throw new HttpError(400, 'order too small');
+      const openFee = fee(notion, config.openFeeBps);
+
+      // open-interest cap (per side) protects the LP pool
+      const sideCap = input.side === 'long' ? BigInt(market.max_oi_long_uusdc) : BigInt(market.max_oi_short_uusdc);
+      if (sideCap > 0n && (await sideOpenInterest(q, market.id, input.side)) + notion > sideCap) {
+        throw new HttpError(400, 'open interest cap reached for this side');
+      }
 
       const collAcct = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
       const marginAcct = await getOrCreateUserAccount(q, userId, 'USER_POSITION_MARGIN');
       const available = await getBalance(q, collAcct);
-      if (available < margin) throw new HttpError(400, 'insufficient balance');
+      if (available < margin + openFee) throw new HttpError(400, 'insufficient balance');
 
-      // lock margin
+      // lock margin, then charge the open fee
       await postTxn(q, {
         reason: 'MARGIN_LOCK',
         refType: 'market',
@@ -160,11 +200,13 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
           { accountId: marginAcct, amount: margin },
         ],
       });
+      await chargeFee(q, userId, openFee, 'OPEN_FEE', market.id);
 
       // open or increase
       const existing = await getOpenPosition(q, userId, market.id, input.side);
       let positionId: string;
       if (existing) {
+        await settlePositionFunding(q, existing, market.id); // settle funding at the old size first
         const oldQty = BigInt(existing.qty_e6);
         const newQty = oldQty + input.qtyE6;
         const newEntry = (oldQty * BigInt(existing.avg_entry_e6) + input.qtyE6 * markE6) / newQty;
@@ -177,11 +219,12 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
         );
       } else {
         positionId = randomUUID();
+        const cum = await getCumulativeFundingE6(q, market.id);
         const liq = liquidationPrice({ side: input.side, entryE6: markE6, leverageE2, maintMarginBps: market.maint_margin_bps });
         await q.query(
-          `INSERT INTO positions(id,user_id,market_id,side,qty_e6,avg_entry_e6,margin_uusdc,leverage_e2,liq_price_e6,status)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'open')`,
-          [positionId, userId, market.id, input.side, input.qtyE6.toString(), markE6.toString(), margin.toString(), leverageE2, liq.toString()],
+          `INSERT INTO positions(id,user_id,market_id,side,qty_e6,avg_entry_e6,margin_uusdc,leverage_e2,liq_price_e6,funding_index_snapshot_e6,status)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'open')`,
+          [positionId, userId, market.id, input.side, input.qtyE6.toString(), markE6.toString(), margin.toString(), leverageE2, liq.toString(), cum.toString()],
         );
       }
 
@@ -193,11 +236,12 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
       );
       await q.query(
         `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
-         VALUES($1,$2,$3,$4,$5,$6,0,0)`,
-        [randomUUID(), orderId, positionId, market.id, markE6.toString(), input.qtyE6.toString()],
+         VALUES($1,$2,$3,$4,$5,$6,$7,0)`,
+        [randomUUID(), orderId, positionId, market.id, markE6.toString(), input.qtyE6.toString(), openFee.toString()],
       );
 
       await refreshMark(q, market, indexE6);
+      await refreshReserved(q);
       publish(`positions:${userId}`, 'update', { marketId: market.id });
       publish(`balance:${userId}`, 'update', {});
       return { orderId, positionId };
@@ -228,12 +272,15 @@ export async function closePosition(db: Db, userId: string, input: CloseInput): 
       if (!mi) throw new HttpError(400, 'no price available');
       const { markE6, indexE6 } = mi;
 
+      await settlePositionFunding(q, pos, market.id); // settle accrued funding first
+
       const qty = BigInt(pos.qty_e6);
       const closeQty = input.fractionBps >= 10_000 ? qty : (qty * BigInt(input.fractionBps)) / 10_000n;
       if (closeQty <= 0n) throw new HttpError(400, 'nothing to close');
       const entry = BigInt(pos.avg_entry_e6);
       const pnl = unrealizedPnl(pos.side, closeQty, entry, markE6);
       const marginRel = (BigInt(pos.margin_uusdc) * closeQty) / qty;
+      const closeFeeAmt = fee(notional(closeQty, markE6), config.closeFeeBps);
 
       const collAcct = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
       const marginAcct = await getOrCreateUserAccount(q, userId, 'USER_POSITION_MARGIN');
@@ -261,6 +308,8 @@ export async function closePosition(db: Db, userId: string, input: CloseInput): 
           ],
         });
       }
+      // close fee
+      await chargeFee(q, userId, closeFeeAmt, 'CLOSE_FEE', pos.id);
 
       const remQty = qty - closeQty;
       const remMargin = BigInt(pos.margin_uusdc) - marginRel;
@@ -286,11 +335,12 @@ export async function closePosition(db: Db, userId: string, input: CloseInput): 
       );
       await q.query(
         `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
-         VALUES($1,$2,$3,$4,$5,$6,0,$7)`,
-        [randomUUID(), orderId, pos.id, market.id, markE6.toString(), closeQty.toString(), pnl.toString()],
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [randomUUID(), orderId, pos.id, market.id, markE6.toString(), closeQty.toString(), closeFeeAmt.toString(), pnl.toString()],
       );
 
       await refreshMark(q, market, indexE6);
+      await refreshReserved(q);
       publish(`positions:${userId}`, 'update', { marketId: market.id });
       publish(`balance:${userId}`, 'update', {});
       return { orderId, realizedPnlUusdc: pnl.toString(), closedQtyE6: closeQty.toString(), remainingQtyE6: remQty.toString() };

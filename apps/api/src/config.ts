@@ -40,6 +40,16 @@ export const config = {
   // Money / safety
   realFunds: process.env.REAL_FUNDS === 'true', // hard gate; MVP must be false
   faucetDefaultUsd: num('FAUCET_DEFAULT_USD', 10_000),
+
+  // Trading fees (basis points of notional)
+  openFeeBps: num('OPEN_FEE_BPS', 10), // 0.10%
+  closeFeeBps: num('CLOSE_FEE_BPS', 10), // 0.10%
+  feeLpSharePct: num('FEE_LP_SHARE_PCT', 50), // % of fees that go to LPs (rest to platform revenue)
+
+  // Funding: per-accrual rate = baseBorrow + skewFactor * (skew / openInterest), all bps
+  fundingBaseBorrowBps: num('FUNDING_BASE_BORROW_BPS', 1), // always-on, paid by both sides to LP
+  fundingSkewFactorBps: num('FUNDING_SKEW_FACTOR_BPS', 30), // skew-balancing component (max)
+  fundingIntervalMs: num('FUNDING_INTERVAL_MS', 60 * 60 * 1000), // hourly
 };
 
 if (config.realFunds) {

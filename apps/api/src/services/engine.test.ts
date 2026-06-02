@@ -14,6 +14,7 @@ const { creditFaucet, getUserBalances } = await import('./faucet.ts');
 const { openPosition, closePosition, getUserPositions } = await import('./engine.ts');
 const { reconcile } = await import('./reconcile.ts');
 const { usdc } = await import('../money.ts');
+const { fee, notional } = await import('@pokex/pricing');
 
 await initDb();
 const db = await getDb();
@@ -45,7 +46,8 @@ test('open a 10x long locks the right margin and computes the liq price', async 
   await openPosition(db, userId, { marketId: market.id, side: 'long', qtyE6: 5_000_000n, leverage: 10, idempotencyKey: randomUUID() });
 
   const b = await getUserBalances(db, userId);
-  assert.equal(b.availableUusdc.toString(), U(9_500)); // $5000 notional / 10x = $500 margin
+  // $5000 notional / 10x = $500 margin; open fee 0.1% of $5000 = $5
+  assert.equal(b.availableUusdc.toString(), U(9_495));
   assert.equal(b.lockedMarginUusdc.toString(), U(500));
 
   const [pos] = await getUserPositions(db, userId);
@@ -64,8 +66,11 @@ test('closing a profitable long pays out from the LP pool and conserves value', 
   const close = await closePosition(db, userId, { positionId: pos.id, fractionBps: 10_000, idempotencyKey: randomUUID() });
   assert.equal(close.realizedPnlUusdc, U(25)); // 5 units * ($1005 - $1000)
 
+  const openFee = fee(notional(5_000_000n, 1_000_000_000n), 10);
+  const closeFee = fee(notional(5_000_000n, 1_005_000_000n), 10);
+  const expected = usdc(10_000) - openFee - closeFee + usdc(25); // principal - fees + profit
   const b = await getUserBalances(db, userId);
-  assert.equal(b.availableUusdc.toString(), U(10_025));
+  assert.equal(b.availableUusdc.toString(), expected.toString());
   assert.equal(b.lockedMarginUusdc.toString(), U(0));
   assert.equal((await getUserPositions(db, userId)).length, 0);
 });
@@ -80,14 +85,20 @@ test('increasing a position volume-weights the entry', async () => {
   await closeAll(userId);
 });
 
-test('leverage over the cap and oversized orders are rejected', async () => {
+test('rejects over-cap leverage, OI-cap breach, and insufficient balance', async () => {
   const userId = await newUser();
   await assert.rejects(
     openPosition(db, userId, { marketId: market.id, side: 'long', qtyE6: 5_000_000n, leverage: 50, idempotencyKey: randomUUID() }),
     /leverage/,
   );
+  // $60k notional @ 20x = $3k margin (affordable) but exceeds the $50k per-side OI cap
   await assert.rejects(
-    openPosition(db, userId, { marketId: market.id, side: 'long', qtyE6: 10_000_000_000n, leverage: 1, idempotencyKey: randomUUID() }),
+    openPosition(db, userId, { marketId: market.id, side: 'long', qtyE6: 60_000_000n, leverage: 20, idempotencyKey: randomUUID() }),
+    /open interest/,
+  );
+  // $20k notional @ 1x = $20k margin > $10k balance
+  await assert.rejects(
+    openPosition(db, userId, { marketId: market.id, side: 'long', qtyE6: 20_000_000n, leverage: 1, idempotencyKey: randomUUID() }),
     /insufficient/,
   );
 });
