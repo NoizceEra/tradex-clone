@@ -46,8 +46,7 @@ export const config = {
   closeFeeBps: num('CLOSE_FEE_BPS', 10), // 0.10%
   feeLpSharePct: num('FEE_LP_SHARE_PCT', 50), // % of fees that go to LPs (rest to platform revenue)
 
-  // Funding: per-accrual rate = baseBorrow + skewFactor * (skew / openInterest), all bps
-  fundingBaseBorrowBps: num('FUNDING_BASE_BORROW_BPS', 1), // always-on, paid by both sides to LP
+  // Funding: per-accrual rate = skewFactor * (skew / openInterest), bps (the heavy side pays)
   fundingSkewFactorBps: num('FUNDING_SKEW_FACTOR_BPS', 30), // skew-balancing component (max)
   fundingIntervalMs: num('FUNDING_INTERVAL_MS', 60 * 60 * 1000), // hourly
 
@@ -62,4 +61,12 @@ if (config.realFunds) {
   throw new Error(
     'REAL_FUNDS=true is not supported in the MVP build. Real custody is gated behind a security audit + legal review.',
   );
+}
+
+// Never run in production with the committed default JWT secret (would allow token forgery).
+if (
+  config.env === 'production' &&
+  (!process.env.JWT_SECRET || config.jwtSecret === 'dev-insecure-secret-change-me' || config.jwtSecret.length < 32)
+) {
+  throw new Error('JWT_SECRET must be set to a strong (>= 32 char) value in production.');
 }

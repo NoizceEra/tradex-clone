@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { notional, initialMargin, maintenanceMargin, unrealizedPnl, liquidationPrice, fee } from '@pokex/pricing';
 import { HttpError } from '../errors.ts';
 import { config } from '../config.ts';
-import type { Db, Queryer } from '../db/client.ts';
+import { advisoryXactLock, type Db, type Queryer } from '../db/client.ts';
 import { getMarketById, type MarketRow } from './markets.ts';
 import { recomputeMark } from './marks.ts';
 import { getOrCreateUserAccount, getOrCreateSystemAccount, getBalance, postTxn } from './ledger.ts';
@@ -103,8 +103,10 @@ async function getLatestMarkIndex(q: Queryer, marketId: string): Promise<{ markE
 }
 
 async function lpDepth(q: Queryer): Promise<bigint> {
-  const r = await q.query<{ a: string }>(`SELECT total_assets_uusdc::text AS a FROM lp_pool WHERE id='pool'`);
-  return r.rows[0] ? BigInt(r.rows[0].a) : 0n;
+  // Authoritative NAV = the LP_POOL ledger balance. (lp_pool.total_assets_uusdc is only synced
+  // on deposit/withdraw and drifts as trades move the pool, so don't use it as the mark depth.)
+  const lp = await getOrCreateSystemAccount(q, 'LP_POOL');
+  return getBalance(q, lp);
 }
 
 /** Recompute the market mark from current open-interest skew and persist+publish it. */
@@ -154,8 +156,8 @@ async function validateMarketAndOrder(q: Queryer, input: OpenInput): Promise<Mar
 }
 
 export async function openPosition(db: Db, userId: string, input: OpenInput): Promise<{ orderId: string; positionId: string; duplicate?: boolean }> {
-  // idempotency: return prior order if this key was already processed
-  const prior = await db.query<{ id: string }>(`SELECT id FROM orders WHERE idempotency_key=$1`, [input.idempotencyKey]);
+  // fast-path idempotency, scoped to the user (keys are not a global namespace)
+  const prior = await db.query<{ id: string }>(`SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2`, [userId, input.idempotencyKey]);
   if (prior.rows[0]) {
     const f = await db.query<{ position_id: string }>(`SELECT position_id FROM fills WHERE order_id=$1 LIMIT 1`, [prior.rows[0].id]);
     return { orderId: prior.rows[0].id, positionId: f.rows[0]?.position_id ?? '', duplicate: true };
@@ -163,11 +165,27 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
 
   return withMarketLock(input.marketId, () =>
     db.tx(async (q) => {
+      await advisoryXactLock(q, input.marketId); // DB-level single-writer per market
       const market = await validateMarketAndOrder(q, input);
       const mi = await getLatestMarkIndex(q, market.id);
       if (!mi) throw new HttpError(400, 'no price available for market');
       const { markE6, indexE6 } = mi;
       const leverageE2 = input.leverage * 100;
+
+      // In-tx idempotency guard: the order row is the anchor. A racing duplicate inserts
+      // nothing and replays the prior result instead of running the side effects twice.
+      const orderId = randomUUID();
+      const ins = await q.query<{ id: string }>(
+        `INSERT INTO orders(id,user_id,market_id,idempotency_key,kind,side,qty_e6,leverage_e2,status)
+         VALUES($1,$2,$3,$4,'market',$5,$6,$7,'filled')
+         ON CONFLICT (user_id, idempotency_key) DO NOTHING RETURNING id`,
+        [orderId, userId, market.id, input.idempotencyKey, input.side, input.qtyE6.toString(), leverageE2],
+      );
+      if (ins.rows.length === 0) {
+        const p = await q.query<{ id: string }>(`SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2`, [userId, input.idempotencyKey]);
+        const f = await q.query<{ position_id: string }>(`SELECT position_id FROM fills WHERE order_id=$1 LIMIT 1`, [p.rows[0].id]);
+        return { orderId: p.rows[0].id, positionId: f.rows[0]?.position_id ?? '', duplicate: true };
+      }
 
       const opp = input.side === 'long' ? 'short' : 'long';
       if (await getOpenPosition(q, userId, market.id, opp)) {
@@ -187,6 +205,9 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
 
       const collAcct = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
       const marginAcct = await getOrCreateUserAccount(q, userId, 'USER_POSITION_MARGIN');
+      // lock the collateral row so concurrent opens by the same user (across markets) can't
+      // both pass the balance check and overdraw it.
+      await q.query('SELECT amount_uusdc FROM balances WHERE account_id=$1 FOR UPDATE', [collAcct]);
       const available = await getBalance(q, collAcct);
       if (available < margin + openFee) throw new HttpError(400, 'insufficient balance');
 
@@ -228,12 +249,6 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
         );
       }
 
-      const orderId = randomUUID();
-      await q.query(
-        `INSERT INTO orders(id,user_id,market_id,idempotency_key,kind,side,qty_e6,leverage_e2,status)
-         VALUES($1,$2,$3,$4,'market',$5,$6,$7,'filled')`,
-        [orderId, userId, market.id, input.idempotencyKey, input.side, input.qtyE6.toString(), leverageE2],
-      );
       await q.query(
         `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
          VALUES($1,$2,$3,$4,$5,$6,$7,0)`,
@@ -250,13 +265,19 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
 }
 
 export async function closePosition(db: Db, userId: string, input: CloseInput): Promise<{ orderId: string; realizedPnlUusdc: string; closedQtyE6: string; remainingQtyE6: string }> {
-  const prior = await db.query<{ id: string }>(`SELECT id FROM orders WHERE idempotency_key=$1`, [input.idempotencyKey]);
+  const prior = await db.query<{ id: string }>(`SELECT id FROM orders WHERE user_id=$1 AND idempotency_key=$2`, [userId, input.idempotencyKey]);
   if (prior.rows[0]) {
-    const f = await db.query<{ realized_pnl_uusdc: string; qty_e6: string }>(
-      `SELECT realized_pnl_uusdc::text AS realized_pnl_uusdc, qty_e6::text AS qty_e6 FROM fills WHERE order_id=$1 LIMIT 1`,
+    const f = await db.query<{ realized_pnl_uusdc: string; qty_e6: string; position_id: string }>(
+      `SELECT realized_pnl_uusdc::text AS realized_pnl_uusdc, qty_e6::text AS qty_e6, position_id FROM fills WHERE order_id=$1 LIMIT 1`,
       [prior.rows[0].id],
     );
-    return { orderId: prior.rows[0].id, realizedPnlUusdc: f.rows[0]?.realized_pnl_uusdc ?? '0', closedQtyE6: f.rows[0]?.qty_e6 ?? '0', remainingQtyE6: '0' };
+    const remPos = f.rows[0] ? await getPositionById(db, f.rows[0].position_id) : null;
+    return {
+      orderId: prior.rows[0].id,
+      realizedPnlUusdc: f.rows[0]?.realized_pnl_uusdc ?? '0',
+      closedQtyE6: f.rows[0]?.qty_e6 ?? '0',
+      remainingQtyE6: remPos && remPos.status === 'open' ? remPos.qty_e6 : '0',
+    };
   }
 
   const pos0 = await getPositionById(db, input.positionId);
@@ -265,12 +286,19 @@ export async function closePosition(db: Db, userId: string, input: CloseInput): 
 
   return withMarketLock(pos0.market_id, () =>
     db.tx(async (q) => {
+      await advisoryXactLock(q, pos0.market_id); // DB-level single-writer per market
       const pos = await getOpenPosition(q, userId, pos0.market_id, pos0.side);
       if (!pos || pos.id !== input.positionId) throw new HttpError(400, 'position not open');
       const market = (await getMarketById(q, pos.market_id))!;
       const mi = await getLatestMarkIndex(q, market.id);
       if (!mi) throw new HttpError(400, 'no price available');
       const { markE6, indexE6 } = mi;
+
+      // an under-margined position must go through liquidation (loss-capped), not a voluntary
+      // close that would drive the user's collateral negative.
+      if (isLiquidatable(pos, market, markE6)) {
+        throw new HttpError(409, 'position is liquidatable and will be liquidated; cannot close manually');
+      }
 
       await settlePositionFunding(q, pos, market.id); // settle accrued funding first
 
@@ -330,7 +358,8 @@ export async function closePosition(db: Db, userId: string, input: CloseInput): 
       const orderId = randomUUID();
       await q.query(
         `INSERT INTO orders(id,user_id,market_id,idempotency_key,kind,side,qty_e6,leverage_e2,status)
-         VALUES($1,$2,$3,$4,'reduce_only',$5,$6,$7,'filled')`,
+         VALUES($1,$2,$3,$4,'reduce_only',$5,$6,$7,'filled')
+         ON CONFLICT (user_id, idempotency_key) DO NOTHING`,
         [orderId, userId, market.id, input.idempotencyKey, pos.side, closeQty.toString(), pos.leverage_e2],
       );
       await q.query(
@@ -518,6 +547,7 @@ export async function liquidateEligible(db: Db, marketId: string): Promise<numbe
     if (!isLiquidatable(candidate, market, mi.markE6)) continue;
     await withMarketLock(marketId, () =>
       db.tx(async (q) => {
+        await advisoryXactLock(q, marketId);
         const fresh = await getOpenPosition(q, candidate.user_id, marketId, candidate.side);
         if (!fresh || fresh.id !== candidate.id) return;
         const mi2 = await getLatestMarkIndex(q, marketId);
@@ -530,14 +560,22 @@ export async function liquidateEligible(db: Db, marketId: string): Promise<numbe
   return count;
 }
 
-/** Circuit breaker: halt markets whose latest accepted oracle print is older than the staleness window. */
-export async function haltStaleMarkets(db: Db, staleMs: number): Promise<number> {
-  const r = await db.query<{ id: string }>(
+/**
+ * Circuit breaker: halt any tradeable market (card OR index) whose latest accepted oracle print
+ * is older than the staleness window, and symmetrically re-activate a halted market once a fresh
+ * print arrives. Only ever moves between 'active' <-> 'reduce_only' (never touches halted/delisted).
+ */
+export async function haltStaleMarkets(db: Db, staleMs: number): Promise<{ halted: number; reactivated: number }> {
+  const fresh = `SELECT market_id FROM oracle_prices WHERE is_accepted AND ingested_at > now() - ($1 || ' milliseconds')::interval`;
+  const halted = await db.query<{ id: string }>(
     `UPDATE markets SET status='reduce_only'
-     WHERE kind='card' AND tradeable AND status='active'
-       AND id NOT IN (SELECT market_id FROM oracle_prices WHERE is_accepted AND ingested_at > now() - ($1 || ' milliseconds')::interval)
-     RETURNING id`,
+     WHERE tradeable AND status='active' AND id NOT IN (${fresh}) RETURNING id`,
     [String(staleMs)],
   );
-  return r.rows.length;
+  const reactivated = await db.query<{ id: string }>(
+    `UPDATE markets SET status='active'
+     WHERE tradeable AND status='reduce_only' AND id IN (${fresh}) RETURNING id`,
+    [String(staleMs)],
+  );
+  return { halted: halted.rows.length, reactivated: reactivated.rows.length };
 }

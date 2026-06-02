@@ -80,6 +80,16 @@ export async function getDb(): Promise<Db> {
   return _db;
 }
 
+/**
+ * Transaction-scoped advisory lock keyed by an arbitrary string. Serializes writers across
+ * pool connections / API instances (auto-released at COMMIT/ROLLBACK). Under PGlite, which
+ * already serializes all queries, this is effectively a no-op. Call as the FIRST statement
+ * inside an engine transaction to make "single-writer per market" true at the DB level.
+ */
+export async function advisoryXactLock(q: Queryer, key: string): Promise<void> {
+  await q.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key]);
+}
+
 /** For tests: close and drop the cached handle. */
 export async function closeDb(): Promise<void> {
   if (_db) {

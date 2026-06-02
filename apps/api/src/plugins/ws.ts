@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 import { onMessage } from '../services/bus.ts';
+import { verifyAccessToken } from '../services/auth.ts';
 
 /** Minimal shape of the ws WebSocket we use (avoids an @types/ws dependency). */
 interface Sock {
@@ -9,17 +10,29 @@ interface Sock {
   readyState: number;
 }
 
+// Per-user channels are private; a client may only subscribe to its OWN.
+const PRIVATE_PREFIXES = ['positions', 'orders', 'balance', 'liquidations', 'lp'];
+const isPrivate = (ch: string) => PRIVATE_PREFIXES.some((p) => ch.startsWith(p + ':'));
+
 /**
- * WebSocket hub at /ws. Clients send {op:'sub'|'unsub', channels:[...]} and {op:'ping'}.
- * Server pushes {ch, type, seq, data}. Public channels (mark/stats/oi/funding) are open;
- * private channels are auth-scoped in a later task.
+ * WebSocket hub at /ws. Public channels (mark/stats/oi/funding) are open. Private per-user
+ * channels require authentication: the client passes an access token via `?token=` on connect
+ * or an {op:'auth', token} message, and may only subscribe to channels suffixed with its own
+ * userId. Subscriptions wait on the in-flight auth so there's no auth/sub ordering race.
  */
 export async function registerWs(app: FastifyInstance): Promise<void> {
   await app.register(websocket);
 
-  app.get('/ws', { websocket: true }, (socket: Sock) => {
+  app.get('/ws', { websocket: true }, (socket: Sock, req) => {
     const channels = new Set<string>();
     const seq = new Map<string, number>();
+    let userId: string | null = null;
+
+    // authenticate from ?token=... if present (verified async; sub waits on this)
+    const queryToken = (req.query as { token?: string } | undefined)?.token;
+    let authReady: Promise<void> = queryToken
+      ? verifyAccessToken(queryToken).then((r) => { userId = r.userId; }).catch(() => { userId = null; })
+      : Promise.resolve();
 
     const unsub = onMessage((m) => {
       if (!channels.has(m.channel)) return;
@@ -32,15 +45,31 @@ export async function registerWs(app: FastifyInstance): Promise<void> {
       }
     });
 
-    socket.on('message', (buf: Buffer) => {
-      let msg: { op?: string; channels?: string[] };
+    socket.on('message', async (buf: Buffer) => {
+      let msg: { op?: string; channels?: string[]; token?: string };
       try {
         msg = JSON.parse(buf.toString());
       } catch {
         return;
       }
-      if (msg.op === 'sub' && Array.isArray(msg.channels)) {
-        for (const c of msg.channels) channels.add(c);
+      if (msg.op === 'auth' && typeof msg.token === 'string') {
+        // assign authReady synchronously so a following 'sub' awaits this verification
+        authReady = verifyAccessToken(msg.token).then((r) => { userId = r.userId; }).catch(() => { userId = null; });
+        await authReady;
+        try {
+          socket.send(JSON.stringify({ ch: '_', type: 'authed', seq: 0, data: { ok: userId !== null } }));
+        } catch {
+          /* noop */
+        }
+      } else if (msg.op === 'sub' && Array.isArray(msg.channels)) {
+        await authReady;
+        for (const c of msg.channels) {
+          if (isPrivate(c)) {
+            if (userId && c.split(':')[1] === userId) channels.add(c); // only your own private channel
+          } else {
+            channels.add(c);
+          }
+        }
       } else if (msg.op === 'unsub' && Array.isArray(msg.channels)) {
         for (const c of msg.channels) channels.delete(c);
       } else if (msg.op === 'ping') {

@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS orders (
   id              TEXT PRIMARY KEY,
   user_id         TEXT NOT NULL REFERENCES users(id),
   market_id       TEXT NOT NULL REFERENCES markets(id),
-  idempotency_key TEXT UNIQUE NOT NULL,
+  idempotency_key TEXT NOT NULL,
   kind            TEXT NOT NULL,           -- market | reduce_only
   side            TEXT NOT NULL,
   qty_e6          BIGINT NOT NULL,
@@ -193,6 +193,8 @@ CREATE TABLE IF NOT EXISTS orders (
   reject_reason   TEXT,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- idempotency is scoped per user, not global, so one user's key can't collide with another's
+CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_user_idem ON orders(user_id, idempotency_key);
 
 CREATE TABLE IF NOT EXISTS fills (
   id                 TEXT PRIMARY KEY,

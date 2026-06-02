@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 process.env.PGLITE_DIR = 'memory://';
 process.env.DATABASE_URL = '';
 process.env.NODE_ENV = 'production';
+process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long';
 
 const { Keypair } = await import('@solana/web3.js');
 const nacl = (await import('tweetnacl')).default;

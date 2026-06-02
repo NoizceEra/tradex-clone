@@ -7,7 +7,6 @@ import { OpenPositions } from './OpenPositions';
 import * as api from '../lib/api.js';
 
 const OPEN_FEE_BPS = 10; // mirrors the server default (preview only; server is authoritative)
-const QTY_STEP = 10_000n; // 0.01 units
 
 export function OrderEntry({ market, onTraded }) {
   const { user } = useAuth();
@@ -50,11 +49,14 @@ export function OrderEntry({ market, onTraded }) {
 
   const markE6 = marks[market.id]?.markE6 ?? market.markE6;
   const priceUsd = markE6 ? Number(markE6) / 1e6 : 0;
-  const marginNum = parseFloat(marginUsd) || 0;
+  const marginNum = Math.min(parseFloat(marginUsd) || 0, 1e15); // clamp absurd/exponential input
   const notionalUsd = marginNum * leverage;
   const qtyUnits = priceUsd > 0 ? notionalUsd / priceUsd : 0;
-  let qtyE6 = BigInt(Math.round(qtyUnits * 1e6));
-  qtyE6 = (qtyE6 / QTY_STEP) * QTY_STEP; // snap to step
+  const step = BigInt(market.qtyStepE6 ?? '10000');
+  const minQty = BigInt(market.minQtyE6 ?? '10000');
+  const qRaw = Math.round(qtyUnits * 1e6);
+  let qtyE6 = Number.isFinite(qRaw) ? BigInt(qRaw) : 0n; // never BigInt(Infinity/NaN): that throws during render
+  qtyE6 = (qtyE6 / step) * step; // snap to the market's step
 
   const liqE6 = markE6 && marginNum > 0
     ? liquidationPrice({ side, entryE6: BigInt(markE6), leverageE2: leverage * 100, maintMarginBps: market.maintMarginBps })
@@ -62,7 +64,7 @@ export function OrderEntry({ market, onTraded }) {
   const feeUusdc = fee(notional(qtyE6, markE6 ? BigInt(markE6) : 0n), OPEN_FEE_BPS);
   const availableUsd = balance ? Number(balance.availableUusdc) / 1e6 : 0;
 
-  const canTrade = user && market.tradeable && market.status === 'active' && qtyE6 >= QTY_STEP && marginNum > 0;
+  const canTrade = user && market.tradeable && market.status === 'active' && qtyE6 >= minQty && marginNum > 0;
 
   const submit = async () => {
     setErr(null);

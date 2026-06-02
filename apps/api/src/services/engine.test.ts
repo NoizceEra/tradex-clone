@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 process.env.PGLITE_DIR = 'memory://';
 process.env.DATABASE_URL = '';
 process.env.NODE_ENV = 'production';
+process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long';
 
 const { getDb, closeDb } = await import('../db/client.ts');
 const { initDb } = await import('../db/init.ts');

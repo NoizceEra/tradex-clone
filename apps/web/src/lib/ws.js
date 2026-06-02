@@ -1,5 +1,6 @@
 // Native WebSocket hub with auto-reconnect + heartbeat. Subscriptions are restored on
 // reconnect. Messages are fanned out to registered listeners.
+import { getAccessToken } from './api.js';
 
 const WS_URL =
   import.meta.env.VITE_WS_URL ||
@@ -24,6 +25,8 @@ function connect() {
   }
   socket.onopen = () => {
     reconnectDelay = 500;
+    const token = getAccessToken();
+    if (token) send({ op: 'auth', token }); // authenticate before (re)subscribing private channels
     if (desired.size) send({ op: 'sub', channels: [...desired] });
     clearInterval(pingTimer);
     pingTimer = setInterval(() => send({ op: 'ping' }), 15000);
@@ -67,4 +70,9 @@ export function unsubscribe(channels) {
 export function onMessage(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
+}
+/** Send an auth frame using the current access token (e.g. after login on an open socket). */
+export function authenticate() {
+  const token = getAccessToken();
+  if (token) send({ op: 'auth', token });
 }

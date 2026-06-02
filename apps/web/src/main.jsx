@@ -11,6 +11,7 @@ import '@solana/wallet-adapter-react-ui/styles.css';
 
 import { Buffer } from 'buffer';
 import { AuthProvider } from './auth/AuthContext.jsx';
+import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 window.Buffer = window.Buffer || Buffer;
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -24,7 +25,9 @@ const RootApp = () => {
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
           <AuthProvider>
-            <App />
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
           </AuthProvider>
         </WalletModalProvider>
       </WalletProvider>

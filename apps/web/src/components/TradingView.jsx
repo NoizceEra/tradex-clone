@@ -112,7 +112,7 @@ export function TradingView({ market }) {
         <div className="card-header-stats">
           <div className="stat-block">
             <span className="stat-label">MARK</span>
-            <span className="stat-value">{formatUsd(px(liveMark))}</span>
+            <span className="stat-value">{liveMark == null ? '—' : formatUsd(px(liveMark))}</span>
           </div>
           <div className="stat-block">
             <span className="stat-label">24H</span>
@@ -120,7 +120,7 @@ export function TradingView({ market }) {
           </div>
           <div className="stat-block">
             <span className="stat-label">INDEX</span>
-            <span className="stat-value">{formatUsd(px(liveIndex))}</span>
+            <span className="stat-value">{liveIndex == null ? '—' : formatUsd(px(liveIndex))}</span>
           </div>
           <div className="stat-block">
             <span className="stat-label">OPEN INT.</span>

@@ -5,13 +5,14 @@ import { randomUUID } from 'node:crypto';
 process.env.PGLITE_DIR = 'memory://';
 process.env.DATABASE_URL = '';
 process.env.NODE_ENV = 'production';
+process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long';
 
 const { getDb, closeDb } = await import('../db/client.ts');
 const { initDb } = await import('../db/init.ts');
 const { ingest } = await import('./oracle.ts');
 const { listMarketsWithData } = await import('./markets.ts');
 const { creditFaucet, getUserBalances } = await import('./faucet.ts');
-const { openPosition, liquidateEligible } = await import('./engine.ts');
+const { openPosition, closePosition, liquidateEligible, getUserPositions } = await import('./engine.ts');
 const { reconcile } = await import('./reconcile.ts');
 const { usdc } = await import('../money.ts');
 
@@ -83,6 +84,19 @@ test('a gap through the liq price creates bad debt, drawn from insurance then so
   assert.ok(BigInt(liq.rows[0].soc) > 0n, 'remainder socialized to LP');
   // insurance was drained by the draw
   assert.equal((await insuranceBalance()).toString(), (insBefore - BigInt(liq.rows[0].drawn)).toString());
+});
+
+test('a liquidatable position cannot be closed manually (must be liquidated)', async () => {
+  const trader = await newUser();
+  await setMark(1000);
+  await openPosition(db, trader, { marketId: market.id, side: 'long', qtyE6: 5_000_000n, leverage: 20, idempotencyKey: randomUUID() });
+  const [pos] = await getUserPositions(db, trader);
+  await setMark(950); // below the ~$975 liq price
+  await assert.rejects(
+    closePosition(db, trader, { positionId: pos.id, fractionBps: 10_000, idempotencyKey: randomUUID() }),
+    /liquidatable/,
+  );
+  await liquidateEligible(db, market.id); // cleanup: it goes through liquidation instead
 });
 
 test('reconciler stays balanced after liquidations and bad debt', async () => {

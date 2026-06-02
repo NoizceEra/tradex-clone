@@ -5,12 +5,13 @@ import { randomUUID } from 'node:crypto';
 process.env.PGLITE_DIR = 'memory://';
 process.env.DATABASE_URL = '';
 process.env.NODE_ENV = 'production';
+process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long';
 
 const { getDb, closeDb } = await import('../db/client.ts');
 const { initDb } = await import('../db/init.ts');
 const { ingest } = await import('./oracle.ts');
 const { listMarketsWithData } = await import('./markets.ts');
-const { creditFaucet } = await import('./faucet.ts');
+const { creditFaucet, getUserBalances } = await import('./faucet.ts');
 const { openPosition, closePosition, getUserPositions } = await import('./engine.ts');
 const { lpDeposit, lpWithdraw, getPool, getLpPosition } = await import('./lp.ts');
 const { accrueFunding } = await import('./funding.ts');
@@ -83,6 +84,13 @@ test('funding charges the heavy (long) side', async () => {
     [trader],
   );
   assert.equal(r.rows[0].s, (-usdc(15)).toString());
+});
+
+test('faucet clamps the available balance to the cap', async () => {
+  const u = await newUser(); // starts at $10k
+  await creditFaucet(db, u, 990_000); // -> exactly the $1,000,000 cap
+  assert.equal((await getUserBalances(db, u)).availableUusdc.toString(), usdc(1_000_000).toString());
+  await assert.rejects(creditFaucet(db, u, 1), /faucet limit/); // can't exceed the cap
 });
 
 test('reconciler stays balanced after LP + funding activity', async () => {

@@ -88,6 +88,8 @@ export interface MarketView {
   tradeable: boolean;
   maxLeverage: number;
   maintMarginBps: number;
+  qtyStepE6: string;
+  minQtyE6: string;
   markE6: string | null;
   indexE6: string | null;
   change24hPct: number;
@@ -131,6 +133,8 @@ export async function listMarketsWithData(db: Db): Promise<MarketView[]> {
       tradeable: m.tradeable,
       maxLeverage: Math.round(m.max_leverage_e2 / 100),
       maintMarginBps: m.maint_margin_bps,
+      qtyStepE6: m.qty_step_e6,
+      minQtyE6: m.min_qty_e6,
       markE6: l?.mark_e6 ?? null,
       indexE6: l?.index_e6 ?? null,
       change24hPct: changeMap.get(m.id) ?? 0,
@@ -167,9 +171,9 @@ export interface Candle {
  */
 export async function getCandles(db: Db, marketId: string, days: number): Promise<Candle[]> {
   const real = await db.query<{ d: string; v: string }>(
-    `SELECT to_char(computed_at, 'YYYY-MM-DD') AS d, (array_agg(mark_price_e6 ORDER BY computed_at DESC))[1]::text AS v
+    `SELECT to_char(computed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS d, (array_agg(mark_price_e6 ORDER BY computed_at DESC))[1]::text AS v
      FROM marks WHERE market_id = $1 AND computed_at > now() - ($2 || ' days')::interval
-     GROUP BY to_char(computed_at, 'YYYY-MM-DD') ORDER BY d`,
+     GROUP BY to_char(computed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') ORDER BY d`,
     [marketId, String(days)],
   );
   if (real.rows.length >= 10) {

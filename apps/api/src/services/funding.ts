@@ -1,6 +1,6 @@
 import { notional } from '@pokex/pricing';
 import { config } from '../config.ts';
-import type { Db, Queryer } from '../db/client.ts';
+import { advisoryXactLock, type Db, type Queryer } from '../db/client.ts';
 import { getOrCreateUserAccount, getOrCreateSystemAccount, postTxn } from './ledger.ts';
 
 /**
@@ -37,6 +37,7 @@ async function sideOi(q: Queryer, marketId: string): Promise<{ longOi: bigint; s
 /** Append a funding interval, advancing the cumulative index by a skew-proportional rate. */
 export async function accrueFunding(db: Db, marketId: string): Promise<{ rateE6: string; cumulativeE6: string }> {
   return db.tx(async (q) => {
+    await advisoryXactLock(q, marketId); // serialize with trades/liquidations on this market
     const { longOi, shortOi } = await sideOi(q, marketId);
     const oi = longOi + shortOi;
     let skewBps = 0;

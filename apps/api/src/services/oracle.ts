@@ -52,17 +52,31 @@ async function recordOracle(
   if (prev > 0n) {
     const dev = Number(indexE6 - prev) / Number(prev);
     if (Math.abs(dev) > OUTLIER_THRESHOLD) {
-      accepted = false;
-      reason = `outlier ${(dev * 100).toFixed(0)}% vs last`;
+      // Escape hatch: adopt a large move once it PERSISTS (the most recent print already showed
+      // this level) so a genuine >60% move can't wedge the market on a frozen reference forever.
+      const recent = await q.query<{ v: string }>(
+        `SELECT index_price_e6::text AS v FROM oracle_prices WHERE market_id=$1 ORDER BY source_observed_at DESC LIMIT 1`,
+        [marketId],
+      );
+      const lastAny = recent.rows[0] ? BigInt(recent.rows[0].v) : 0n;
+      const persisted = lastAny > 0n && lastAny !== prev && Math.abs(Number(indexE6 - lastAny) / Number(lastAny)) <= OUTLIER_THRESHOLD;
+      if (persisted) {
+        reason = 'force-accepted: level persisted';
+      } else {
+        accepted = false;
+        reason = `outlier ${(dev * 100).toFixed(0)}% vs last`;
+      }
     }
   }
-  await q.query(
+  // RETURNING lets us detect a duplicate (no-op) insert so callers don't recompute a stray mark.
+  const ins = await q.query<{ id: string }>(
     `INSERT INTO oracle_prices(market_id, index_price_e6, raw_payload, source_observed_at, is_accepted, reject_reason)
      VALUES($1, $2, $3, $4, $5, $6)
-     ON CONFLICT(market_id, source_observed_at) DO NOTHING`,
+     ON CONFLICT(market_id, source_observed_at) DO NOTHING
+     RETURNING id`,
     [marketId, indexE6.toString(), JSON.stringify(payload ?? null), observedAt.toISOString(), accepted, reason],
   );
-  return accepted;
+  return ins.rows.length > 0 && accepted;
 }
 
 /** Ingest a price snapshot: upsert card markets, record prints, recompute marks, rebuild indices. */
@@ -115,15 +129,17 @@ async function buildIndex(
   const rawE6 = members.reduce((a, m) => a + m.priceE6, 0n);
   const marketId = await db.tx((q) => upsertIndexMarket(q, { slug: idx.slug, name: idx.name, tradeable: true }));
 
-  // Divisor is set once for continuity: index_value = rawE6 / divisor (≈ base on first build).
+  // Divisor: based at BASE_VALUE on first build, then RE-BASED whenever the constituent set
+  // changes so the index value is continuous across rebalances (composition shouldn't move it).
+  const newSet = members.map((m) => m.cardId).sort().join(',');
+  const oldRows = await db.query<{ card_id: string }>(`SELECT card_id FROM index_constituents WHERE market_id=$1`, [marketId]);
+  const oldSet = oldRows.rows.map((r) => r.card_id).sort().join(',');
   const divRow = await db.query<{ d: string }>(
     `SELECT divisor_e6::text AS d FROM index_divisors WHERE market_id = $1`,
     [marketId],
   );
   let divisor: bigint;
-  if (divRow.rows[0]) {
-    divisor = BigInt(divRow.rows[0].d);
-  } else {
+  if (!divRow.rows[0]) {
     divisor = rawE6 / BASE_VALUE_E6;
     if (divisor <= 0n) divisor = 1n;
     await db.query(
@@ -131,6 +147,20 @@ async function buildIndex(
        ON CONFLICT(market_id) DO NOTHING`,
       [marketId, divisor.toString(), BASE_VALUE_E6.toString()],
     );
+  } else {
+    divisor = BigInt(divRow.rows[0].d);
+    if (oldSet !== '' && oldSet !== newSet) {
+      const prev = await db.query<{ v: string }>(
+        `SELECT index_price_e6::text AS v FROM oracle_prices WHERE market_id=$1 AND is_accepted ORDER BY source_observed_at DESC LIMIT 1`,
+        [marketId],
+      );
+      const prevVal = prev.rows[0] ? BigInt(prev.rows[0].v) : 0n;
+      if (prevVal > 0n) {
+        const rebased = rawE6 / prevVal; // keeps index_value continuous at the rebalance instant
+        divisor = rebased > 0n ? rebased : 1n;
+        await db.query(`UPDATE index_divisors SET divisor_e6=$1, as_of=now() WHERE market_id=$2`, [divisor.toString(), marketId]);
+      }
+    }
   }
   const indexValueE6 = rawE6 / divisor;
 

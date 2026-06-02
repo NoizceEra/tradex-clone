@@ -33,14 +33,16 @@ export async function creditFaucet(db: Db, userId: string, amountUsd?: number): 
     const coll = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
     const faucet = await getOrCreateSystemAccount(q, 'FAUCET_SOURCE');
     const current = await getBalance(q, coll);
-    if (current >= MAX_AVAILABLE_UUSDC) {
+    const headroom = MAX_AVAILABLE_UUSDC - current;
+    if (headroom <= 0n) {
       throw new HttpError(429, 'faucet limit reached — you already have plenty of play USDC');
     }
+    const credit = amount < headroom ? amount : headroom; // clamp so balance can't exceed the cap
     return postTxn(q, {
       reason: 'FAUCET',
       entries: [
-        { accountId: coll, amount },
-        { accountId: faucet, amount: -amount },
+        { accountId: coll, amount: credit },
+        { accountId: faucet, amount: -credit },
       ],
     });
   });

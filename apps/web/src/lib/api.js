@@ -4,6 +4,7 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 let accessToken = null;
+let refreshing = null; // in-flight refresh promise (single-flight)
 const REFRESH_KEY = 'pokeX_refresh';
 
 export function getRefreshToken() {
@@ -19,6 +20,9 @@ export function clearTokens() {
 }
 export function hasSession() {
   return Boolean(accessToken || getRefreshToken());
+}
+export function getAccessToken() {
+  return accessToken;
 }
 
 async function raw(path, { method = 'GET', body, auth = false } = {}) {
@@ -46,16 +50,24 @@ async function req(path, opts = {}) {
   return res.json();
 }
 
-export async function refreshSession() {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
-  const res = await raw('/auth/refresh', { method: 'POST', body: { refreshToken } });
-  if (!res.ok) {
-    clearTokens();
-    return false;
-  }
-  setTokens(await res.json());
-  return true;
+// Single-flight: concurrent 401s share ONE rotation, so the rotating refresh token isn't
+// presented twice (which the server would treat as reuse and revoke the whole session family).
+export function refreshSession() {
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) return false;
+    const res = await raw('/auth/refresh', { method: 'POST', body: { refreshToken } });
+    if (!res.ok) {
+      clearTokens();
+      return false;
+    }
+    setTokens(await res.json());
+    return true;
+  })().finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
 }
 
 // --- auth ---
