@@ -95,6 +95,12 @@ export const FaucetRequest = z.object({
   amountUsd: z.number().positive().max(100_000).default(10_000),
 });
 
+// --- social (referrals) ------------------------------------------------------
+
+export const ReferralRedeemRequest = z.object({
+  code: z.string().trim().min(4).max(32),
+});
+
 // --- auth (SIWS) -------------------------------------------------------------
 
 export const NonceRequest = z.object({ pubkey: z.string().min(32) });

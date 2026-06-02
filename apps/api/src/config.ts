@@ -47,6 +47,7 @@ export const config = {
   // Money / safety
   realFunds: process.env.REAL_FUNDS === 'true', // hard gate; MVP must be false
   faucetDefaultUsd: num('FAUCET_DEFAULT_USD', 10_000),
+  referralBonusUsd: num('REFERRAL_BONUS_USD', 1_000), // play-USDC bonus per redeemed referral (both parties); 0 disables
 
   // Trading fees (basis points of notional)
   openFeeBps: num('OPEN_FEE_BPS', 10), // 0.10%

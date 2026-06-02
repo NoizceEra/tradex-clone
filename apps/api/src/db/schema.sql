@@ -64,8 +64,17 @@ CREATE TABLE IF NOT EXISTS users (
   id            TEXT PRIMARY KEY,
   solana_pubkey TEXT UNIQUE NOT NULL,
   status        TEXT NOT NULL DEFAULT 'active',
+  referral_code TEXT,                          -- this user's own code (assigned on signup)
+  referred_by   TEXT REFERENCES users(id),     -- who referred this user (set once on redeem)
+  referred_at   TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- referral columns added in-place for DBs created before the feature (no-op on a fresh DB)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by TEXT REFERENCES users(id);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_at TIMESTAMPTZ;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_referral_code ON users(referral_code);
+CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);
 
 CREATE TABLE IF NOT EXISTS auth_nonces (
   nonce      TEXT PRIMARY KEY,

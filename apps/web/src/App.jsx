@@ -6,9 +6,12 @@ import { OrderEntry } from './components/OrderEntry';
 import { Marketplace } from './components/Marketplace';
 import { Portfolio } from './components/Portfolio';
 import { PoolView } from './components/PoolView';
+import { Leaderboard } from './components/Leaderboard';
 import { Toasts } from './components/Toasts';
 import { useRealtime } from './store/realtime';
 import * as api from './lib/api.js';
+
+api.capturePendingReferral(); // stash any ?ref=CODE before the URL changes
 
 function App() {
   const [markets, setMarkets] = useState([]);
@@ -69,6 +72,7 @@ function App() {
       {activeView === 'markets' && <Marketplace markets={markets} loading={loading} onTradeMarket={handleTradeMarket} />}
       {activeView === 'portfolio' && <Portfolio markets={markets} onSelect={handleTradeMarket} />}
       {activeView === 'pool' && <PoolView />}
+      {activeView === 'leaderboard' && <Leaderboard />}
 
       <Toasts />
     </div>

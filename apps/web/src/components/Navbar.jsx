@@ -5,6 +5,7 @@ const NAV = [
   ['markets', 'Markets'],
   ['portfolio', 'Portfolio'],
   ['pool', 'Pool'],
+  ['leaderboard', 'Leaderboard'],
 ];
 
 export function Navbar({ activeView, setActiveView }) {

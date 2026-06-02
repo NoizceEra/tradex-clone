@@ -3,6 +3,7 @@ import { formatUsd } from '@pokex/pricing';
 import { useAuth } from '../auth/AuthContext';
 import { FaucetButton } from './FaucetButton';
 import { OpenPositions } from './OpenPositions';
+import { ReferralPanel } from './ReferralPanel';
 import * as api from '../lib/api.js';
 
 export function Portfolio({ markets, onSelect }) {
@@ -56,6 +57,8 @@ export function Portfolio({ markets, onSelect }) {
           if (m) onSelect(m);
         }}
       />
+
+      <ReferralPanel onRedeemed={refresh} />
     </div>
   );
 }

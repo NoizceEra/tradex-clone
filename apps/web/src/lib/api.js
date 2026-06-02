@@ -99,6 +99,21 @@ export const openOrder = (body) => req('/orders', { method: 'POST', auth: true, 
 export const closePosition = (positionId, body) =>
   req(`/positions/${positionId}/close`, { method: 'POST', auth: true, body });
 
+// --- social (leaderboard + referrals) ---
+// Leaderboard is public; the optional Bearer (added when signed in) pins the caller's own row.
+export const getLeaderboard = (limit = 100) => req(`/leaderboard?limit=${limit}`, { auth: true });
+export const getReferral = () => req('/referral/me', { auth: true });
+export const redeemReferral = (code) => req('/referral/redeem', { method: 'POST', auth: true, body: { code } });
+
+// A ?ref=CODE link is captured on first load and held until the user signs in and redeems it.
+const REF_KEY = 'pokeX_ref';
+export function capturePendingReferral() {
+  const code = new URLSearchParams(window.location.search).get('ref');
+  if (code) localStorage.setItem(REF_KEY, code.trim().toUpperCase());
+}
+export const getPendingReferral = () => localStorage.getItem(REF_KEY);
+export const clearPendingReferral = () => localStorage.removeItem(REF_KEY);
+
 // --- LP ---
 export const getPool = () => req('/lp/pool');
 export const getLpPosition = () => req('/lp/position', { auth: true });
