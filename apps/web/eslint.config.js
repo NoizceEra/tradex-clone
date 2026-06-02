@@ -17,5 +17,10 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Data-fetch-on-mount effects (loadMarkets/refresh) legitimately call setState in
+      // async callbacks; the v7 rule is too aggressive for that idiom, so warn (not error).
+      'react-hooks/set-state-in-effect': 'warn',
+    },
   },
 ])

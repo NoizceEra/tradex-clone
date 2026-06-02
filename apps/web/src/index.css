@@ -796,3 +796,70 @@ body {
   0%, 100% { transform: scaleY(1); opacity: 0.5; }
   50%       { transform: scaleY(2); opacity: 1; }
 }
+
+/* ===== PokeX perps MVP additions ===== */
+.btn-ghost {
+  background: var(--bg-3); border: 1px solid var(--border); color: var(--text);
+  font-family: 'Press Start 2P', monospace; font-size: 0.5rem; padding: 0.45rem 0.6rem;
+  cursor: pointer; border-radius: 2px;
+}
+.btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
+.btn-ghost:disabled { opacity: 0.5; cursor: default; }
+.btn-ghost.sm { font-size: 0.45rem; padding: 0.3rem 0.45rem; }
+
+.auth-pill { display: flex; align-items: center; gap: 0.5rem; }
+.auth-addr { font-size: 0.55rem; color: var(--gold); background: var(--bg-3); padding: 0.35rem 0.5rem; border: 1px solid var(--border); }
+
+.idx-thumb {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-3); color: var(--gold); font-size: 0.4rem; border: 1px solid var(--border);
+  width: 28px; height: 38px; flex-shrink: 0;
+}
+.market-item-disabled { opacity: 0.45; }
+.market-item-disabled:hover { background: transparent; cursor: not-allowed; }
+
+.market-halt-badge { margin-left: auto; color: var(--danger); font-size: 0.5rem; border: 1px solid var(--danger); padding: 0.15rem 0.3rem; }
+
+/* Open-interest panel */
+.oi-row { display: flex; justify-content: space-between; font-size: 0.55rem; margin-bottom: 0.4rem; }
+.oi-bar { display: flex; height: 14px; border: 1px solid var(--border); overflow: hidden; }
+.oi-bar-long { background: var(--success); }
+.oi-bar-short { background: var(--danger); }
+.oi-hint { margin-top: 0.5rem; font-size: 0.5rem; color: var(--text-muted); line-height: 1.5; }
+
+/* Positions table */
+.positions-table { width: 100%; border-collapse: collapse; font-size: 0.5rem; }
+.positions-table th { text-align: left; color: var(--text-muted); padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--border); font-weight: normal; }
+.positions-table td { padding: 0.4rem 0.4rem; border-bottom: 1px solid var(--bg-3); }
+.link { color: var(--gold); cursor: pointer; background: none; border: none; font-family: inherit; font-size: inherit; padding: 0; }
+.link:hover { text-decoration: underline; }
+
+/* Full-page views (portfolio / pool) */
+.page { padding: 1.5rem 2rem; overflow-y: auto; }
+.page h2 { color: var(--gold); font-size: 0.9rem; margin: 0 0 1rem; }
+.page h3 { color: var(--text); font-size: 0.7rem; margin: 1.5rem 0 0.75rem; }
+.stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; }
+.stat-card { background: var(--bg-2); border: 1px solid var(--border); padding: 0.85rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.sc-label { font-size: 0.5rem; color: var(--text-muted); }
+.sc-val { font-size: 0.75rem; color: var(--text); }
+
+.lp-forms { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-top: 1rem; }
+.lp-form { display: flex; flex-direction: column; gap: 0.6rem; }
+.glass-card { background: var(--bg-2); border: 1px solid var(--border); padding: 1rem; }
+
+/* Order panel extras */
+.order-gated { background: rgba(248,81,73,0.1); border: 1px solid var(--danger); color: var(--danger); font-size: 0.5rem; padding: 0.5rem; margin-bottom: 0.5rem; line-height: 1.5; }
+.order-error { color: var(--danger); font-size: 0.5rem; margin-top: 0.5rem; line-height: 1.5; }
+.order-signin-hint { font-size: 0.55rem; color: var(--text-muted); text-align: center; padding: 0.75rem; }
+.order-actions { display: flex; flex-direction: column; gap: 0.5rem; }
+.order-positions { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 0.75rem; }
+.order-positions-title { font-size: 0.55rem; color: var(--text-muted); margin-bottom: 0.5rem; }
+.preview-index { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem; padding: 2rem 1rem; color: var(--gold); font-size: 0.6rem; text-align: center; }
+.binder-idx { display: flex; align-items: center; justify-content: center; font-size: 2rem; height: 100%; }
+
+/* Toasts */
+.toasts { position: fixed; bottom: 1rem; right: 1rem; display: flex; flex-direction: column; gap: 0.5rem; z-index: 1000; }
+.toast { background: var(--bg-2); border: 1px solid var(--gold); color: var(--text); font-size: 0.55rem; padding: 0.75rem 1rem; box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+.toast.down { border-color: var(--danger); color: var(--danger); }
+
+.leverage-slider { width: 100%; accent-color: var(--gold); cursor: pointer; }

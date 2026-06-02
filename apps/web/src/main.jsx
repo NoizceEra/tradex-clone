@@ -9,29 +9,23 @@ import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adap
 import { clusterApiUrl } from '@solana/web3.js';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
-// Web3 polyfills might be needed for some wallet packages, but Vite often handles standard ones. 
-// If not, window.Buffer = Buffer could be required. 
 import { Buffer } from 'buffer';
+import { AuthProvider } from './auth/AuthContext.jsx';
 window.Buffer = window.Buffer || Buffer;
 
 // eslint-disable-next-line react-refresh/only-export-components
 const RootApp = () => {
   // Play-money MVP runs on devnet. Override with VITE_SOLANA_RPC in prod.
   const endpoint = import.meta.env.VITE_SOLANA_RPC || clusterApiUrl('devnet');
-
-  const wallets = useMemo(
-    () => [
-      new PhantomWalletAdapter(),
-      new SolflareWalletAdapter(),
-    ],
-    []
-  );
+  const wallets = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter()], []);
 
   return (
     <ConnectionProvider endpoint={endpoint}>
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>
-          <App />
+          <AuthProvider>
+            <App />
+          </AuthProvider>
         </WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>

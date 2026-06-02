@@ -1,0 +1,61 @@
+import { useState, useEffect, useCallback } from 'react';
+import { formatUsd } from '@pokex/pricing';
+import { useAuth } from '../auth/AuthContext';
+import { FaucetButton } from './FaucetButton';
+import { OpenPositions } from './OpenPositions';
+import * as api from '../lib/api.js';
+
+export function Portfolio({ markets, onSelect }) {
+  const { user } = useAuth();
+  const [balance, setBalance] = useState(null);
+  const [positions, setPositions] = useState([]);
+
+  const refresh = useCallback(() => {
+    if (!user) return;
+    api.getBalance().then(setBalance).catch(() => {});
+    api.getPositions().then((r) => setPositions(r.positions)).catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
+    refresh();
+    if (!user) return;
+    const t = setInterval(refresh, 5000);
+    return () => clearInterval(t);
+  }, [refresh, user]);
+
+  if (!user) {
+    return (
+      <div className="page">
+        <div className="empty-state">Connect &amp; sign in to view your portfolio.</div>
+      </div>
+    );
+  }
+
+  const v = balance || {};
+  const stat = (e6) => (e6 == null ? '—' : formatUsd(BigInt(e6)));
+  const pnlUp = v.unrealizedPnlUusdc && BigInt(v.unrealizedPnlUusdc) >= 0n;
+
+  return (
+    <div className="page portfolio">
+      <h2>Portfolio</h2>
+      <div className="stat-cards">
+        <div className="stat-card"><span className="sc-label">Equity</span><span className="sc-val">{stat(v.equityUusdc)}</span></div>
+        <div className="stat-card"><span className="sc-label">Available</span><span className="sc-val">{stat(v.availableUusdc)}</span></div>
+        <div className="stat-card"><span className="sc-label">Margin Locked</span><span className="sc-val">{stat(v.lockedMarginUusdc)}</span></div>
+        <div className="stat-card"><span className="sc-label">Unrealized PnL</span><span className={`sc-val ${pnlUp ? 'up' : 'down'}`}>{stat(v.unrealizedPnlUusdc)}</span></div>
+      </div>
+      <div style={{ margin: '1rem 0' }}>
+        <FaucetButton onFunded={refresh} className="btn-primary" />
+      </div>
+      <h3>Open Positions</h3>
+      <OpenPositions
+        positions={positions}
+        onChanged={refresh}
+        onSelect={(mid) => {
+          const m = markets.find((x) => x.id === mid);
+          if (m) onSelect(m);
+        }}
+      />
+    </div>
+  );
+}

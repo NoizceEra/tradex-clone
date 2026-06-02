@@ -1,115 +1,146 @@
-import React, { useState } from 'react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { getCardPrice as getPrice } from '@pokex/pricing';
+import { useState, useEffect, useCallback } from 'react';
+import { liquidationPrice, fee, notional, formatUsd } from '@pokex/pricing';
+import { useRealtime } from '../store/realtime';
+import { useAuth } from '../auth/AuthContext';
+import { FaucetButton } from './FaucetButton';
+import { OpenPositions } from './OpenPositions';
+import * as api from '../lib/api.js';
 
-export function OrderEntry({ selectedCard, portfolio, executeTrade }) {
-  const [modalCard, setModalCard] = React.useState(null);
-  const [side, setSide] = useState('buy');
-  const [amount, setAmount] = useState('');
+const OPEN_FEE_BPS = 10; // mirrors the server default (preview only; server is authoritative)
+const QTY_STEP = 10_000n; // 0.01 units
 
-  const price = getPrice(selectedCard);
-  const usdTotal = amount && price ? (parseFloat(amount) * price).toFixed(2) : '0.00';
+export function OrderEntry({ market, onTraded }) {
+  const { user } = useAuth();
+  const marks = useRealtime((s) => s.marks);
+  const [side, setSide] = useState('long');
+  const [marginUsd, setMarginUsd] = useState('');
+  const [leverageInput, setLeverage] = useState(5);
+  const [balance, setBalance] = useState(null);
+  const [positions, setPositions] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  const maxLev = market?.maxLeverage ?? 20;
+  const leverage = Math.min(leverageInput, maxLev); // clamp during render (no setState-in-effect)
+
+  const refresh = useCallback(() => {
+    if (!user) {
+      setBalance(null);
+      setPositions([]);
+      return;
+    }
+    api.getBalance().then(setBalance).catch(() => {});
+    api.getPositions().then((r) => setPositions(r.positions)).catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
+    refresh();
+    if (!user) return;
+    const t = setInterval(refresh, 5000);
+    return () => clearInterval(t);
+  }, [refresh, user]);
+
+  if (!market) {
+    return (
+      <div className="order-panel">
+        <div className="card-placeholder">Select a market to trade</div>
+      </div>
+    );
+  }
+
+  const markE6 = marks[market.id]?.markE6 ?? market.markE6;
+  const priceUsd = markE6 ? Number(markE6) / 1e6 : 0;
+  const marginNum = parseFloat(marginUsd) || 0;
+  const notionalUsd = marginNum * leverage;
+  const qtyUnits = priceUsd > 0 ? notionalUsd / priceUsd : 0;
+  let qtyE6 = BigInt(Math.round(qtyUnits * 1e6));
+  qtyE6 = (qtyE6 / QTY_STEP) * QTY_STEP; // snap to step
+
+  const liqE6 = markE6 && marginNum > 0
+    ? liquidationPrice({ side, entryE6: BigInt(markE6), leverageE2: leverage * 100, maintMarginBps: market.maintMarginBps })
+    : 0n;
+  const feeUusdc = fee(notional(qtyE6, markE6 ? BigInt(markE6) : 0n), OPEN_FEE_BPS);
+  const availableUsd = balance ? Number(balance.availableUusdc) / 1e6 : 0;
+
+  const canTrade = user && market.tradeable && market.status === 'active' && qtyE6 >= QTY_STEP && marginNum > 0;
+
+  const submit = async () => {
+    setErr(null);
+    setBusy(true);
+    try {
+      await api.openOrder({ marketId: market.id, side, qtyE6: qtyE6.toString(), leverage, idempotencyKey: crypto.randomUUID() });
+      setMarginUsd('');
+      refresh();
+      onTraded?.();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="order-panel">
-
-      {/* Card Preview */}
-      <div className="card-preview" onClick={() => selectedCard && setModalCard(selectedCard)} style={{cursor: selectedCard ? 'pointer' : 'default'}}>
-        {selectedCard ? (
-          <img
-            src={selectedCard.images.large}
-            alt={selectedCard.name}
-            className="preview-img"
-          />
+      <div className="card-preview">
+        {market.imageSmall ? (
+          <img src={market.imageSmall} alt={market.displayName} className="preview-img" />
         ) : (
-          <div className="card-placeholder">Select a card<br />from the market</div>
+          <div className="preview-index">📈<br />{market.displayName}</div>
         )}
-        {selectedCard && (
-          <div className="preview-label">{selectedCard.name} #{selectedCard.number}</div>
-        )}
+        <div className="preview-label">{market.displayName}</div>
       </div>
 
-      {/* Order Form */}
       <div className="order-form">
+        {!market.tradeable && <div className="order-gated">Data source pending — not yet tradeable.</div>}
 
-        {/* Buy / Sell Toggle */}
         <div className="order-side-toggle">
-          <button
-            className={`side-btn buy ${side === 'buy' ? 'active' : ''}`}
-            onClick={() => setSide('buy')}
-          >
-            BUY
-          </button>
-          <button
-            className={`side-btn sell ${side === 'sell' ? 'active' : ''}`}
-            onClick={() => setSide('sell')}
-          >
-            SELL
-          </button>
+          <button className={`side-btn buy ${side === 'long' ? 'active' : ''}`} onClick={() => setSide('long')}>LONG</button>
+          <button className={`side-btn sell ${side === 'short' ? 'active' : ''}`} onClick={() => setSide('short')}>SHORT</button>
         </div>
 
-        {/* Amount Input */}
         <div className="form-field">
           <label className="field-label">
-            <span>QUANTITY (CARDS)</span>
-            <span className="field-hint">Balance: ${portfolio ? portfolio.balance.toFixed(2) : '0.00'}</span>
+            <span>MARGIN (USDC)</span>
+            <span className="field-hint">Avail: ${availableUsd.toFixed(2)}</span>
           </label>
           <div className="field-input-wrap">
-            <input
-              type="number"
-              min="0"
-              placeholder="0"
-              value={amount}
-              onChange={e => setAmount(e.target.value)}
-            />
-            <span className="field-unit">QTY</span>
+            <input type="number" min="0" placeholder="0" value={marginUsd} onChange={(e) => setMarginUsd(e.target.value)} />
+            <span className="field-unit">USDC</span>
           </div>
         </div>
 
-        {/* Summary */}
+        <div className="form-field">
+          <label className="field-label">
+            <span>LEVERAGE</span>
+            <span className="field-hint">{leverage}x (max {maxLev}x)</span>
+          </label>
+          <input className="leverage-slider" type="range" min="1" max={maxLev} value={leverage} onChange={(e) => setLeverage(Number(e.target.value))} />
+        </div>
+
         <div className="order-info-box">
-          <div className="order-info-row">
-            <span>Market Price</span>
-            <span>{price > 0 ? `$${price.toFixed(2)}` : '—'}</span>
-          </div>
-          <div className="order-info-row">
-            <span>Est. Cards</span>
-            <span>{amount ? parseFloat(amount).toFixed(2) : '—'}</span>
-          </div>
-          <div className="order-info-row total">
-            <span>Total</span>
-            <span>${usdTotal}</span>
-          </div>
+          <div className="order-info-row"><span>Mark</span><span>{priceUsd ? formatUsd(priceUsd) : '—'}</span></div>
+          <div className="order-info-row"><span>Position size</span><span>{(Number(qtyE6) / 1e6).toFixed(2)} @ {formatUsd(notionalUsd)}</span></div>
+          <div className="order-info-row"><span>Liq. price</span><span className="down">{liqE6 ? formatUsd(BigInt(liqE6)) : '—'}</span></div>
+          <div className="order-info-row"><span>Est. fee</span><span>{formatUsd(BigInt(feeUusdc))}</span></div>
         </div>
 
-        {/* Wallet Button */}
-        <div className="wallet-wrap">
-          <WalletMultiButton />
+        {err && <div className="order-error">{err}</div>}
+
+        {!user ? (
+          <div className="order-signin-hint">Connect &amp; sign in to trade.</div>
+        ) : (
+          <div className="order-actions">
+            <FaucetButton onFunded={refresh} />
+            <button className={`place-order-btn ${side === 'long' ? 'buy' : 'sell'}`} disabled={!canTrade || busy} onClick={submit}>
+              {busy ? '…' : `${side === 'long' ? 'LONG' : 'SHORT'} ${market.displayName.slice(0, 16)}`}
+            </button>
+          </div>
+        )}
+
+        <div className="order-positions">
+          <div className="order-positions-title">Open Positions</div>
+          <OpenPositions positions={positions} onChanged={() => { refresh(); onTraded?.(); }} />
         </div>
-
-        {/* Place Order */}
-        <button
-            className={`place-order-btn ${side}`}
-            disabled={!selectedCard || !amount || parseFloat(amount) <= 0}
-            onClick={() => {
-              executeTrade(selectedCard, side, parseFloat(amount), price);
-              setAmount('');
-            }}
-          >
-            {side === 'buy' ? '▶ BUY' : '▶ SELL'} {selectedCard ? selectedCard.name.toUpperCase() : '—'}
-          </button>
-          {modalCard && (
-            <div className="modal" onClick={() => setModalCard(null)}>
-              <div className="modal-content" onClick={e => e.stopPropagation()}>
-                <img src={modalCard.images.large} alt={modalCard.name} style={{maxWidth:'80vw',maxHeight:'80vh'}} />
-                <h3 style={{marginTop:'0.5rem',color:'var(--text)'}}>{modalCard.name} #{modalCard.number}</h3>
-                <p style={{color:'var(--text-muted)'}}>Set: {modalCard.set?.name}</p>
-                <p style={{color:'var(--text)'}}>Price: ${getPrice(modalCard).toFixed(2)}</p>
-                <button onClick={() => setModalCard(null)} style={{marginTop:'0.5rem',padding:'0.4rem 0.8rem',background:'var(--bg-3)',border:'1px solid var(--border)',color:'var(--text)',cursor:'pointer'}}>Close</button>
-              </div>
-            </div>
-          )}
-
       </div>
     </div>
   );
