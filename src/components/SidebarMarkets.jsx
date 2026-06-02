@@ -1,42 +1,92 @@
-import React from 'react';
+import React, { useState } from 'react';
+
+const getPrice = (card) => {
+  if (!card) return 0;
+  const p = card.tcgplayer?.prices;
+  if (!p) return 0;
+  return p.holofoil?.market || p.normal?.market || p['1stEditionHolofoil']?.market || 0;
+};
+
+const getSet = (card) => card?.set?.name || '';
 
 export function SidebarMarkets({ cards, loading, selectedCard, onSelectCard }) {
+  const [search, setSearch] = useState('');
+  const [tab, setTab] = useState('markets');
+
+  const filtered = cards.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
-    <div className="sidebar-markets">
+    <div className="sidebar">
+      {/* Tabs */}
       <div className="sidebar-tabs">
-        <span className="sidebar-tab active">Top Markets</span>
-        <span className="sidebar-tab">My Positions</span>
-      </div>
-      
-      <div className="sidebar-header">
-        <span>Market</span>
-        <span>Price</span>
+        <button
+          className={`sidebar-tab-btn ${tab === 'markets' ? 'active' : ''}`}
+          onClick={() => setTab('markets')}
+        >
+          Markets
+        </button>
+        <button
+          className={`sidebar-tab-btn ${tab === 'positions' ? 'active' : ''}`}
+          onClick={() => setTab('positions')}
+        >
+          Positions
+        </button>
       </div>
 
+      {/* Search */}
+      <div className="sidebar-search">
+        <input
+          type="text"
+          placeholder="Search..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </div>
+
+      {/* Column Headers */}
+      <div className="sidebar-col-headers">
+        <span>CARD</span>
+        <span>PRICE</span>
+      </div>
+
+      {/* List */}
       <div className="market-list">
-        {loading && <div style={{ padding: '1rem', color: 'var(--text-muted)' }}>Loading...</div>}
-        
-        {cards.map(card => {
-          const price = card.tcgplayer?.prices?.holofoil?.market 
-            || card.tcgplayer?.prices?.normal?.market 
-            || card.tcgplayer?.prices?.['1stEditionHolofoil']?.market
-            || 0;
-            
+        {loading && (
+          <div className="loading-pixel" style={{ padding: '2rem' }}>
+            <span /><span /><span />
+          </div>
+        )}
+        {tab === 'positions' && !loading && (
+          <div className="empty-state">No open positions.<br />Connect wallet to begin.</div>
+        )}
+        {tab === 'markets' && filtered.map(card => {
+          const price = getPrice(card);
           const isActive = selectedCard?.id === card.id;
-          
+          // Deterministic fake 24h change from card ID
+          const seed = card.id.charCodeAt(0) + card.id.charCodeAt(1);
+          const change = ((seed % 20) - 8) * 0.3;
+          const changeUp = change >= 0;
+
           return (
-            <div 
-              key={card.id} 
-              className={`market-item ${isActive ? 'active' : ''}`} 
+            <div
+              key={card.id}
+              className={`market-item ${isActive ? 'selected' : ''}`}
               onClick={() => onSelectCard(card)}
             >
               <div className="market-item-left">
-                <span className="market-name">{card.name} - {card.number}</span>
-                <span className="market-vol">{(price * 400).toFixed(0)}</span>
+                <img src={card.images.small} alt={card.name} className="market-thumb" />
+                <div className="market-item-info">
+                  <span className="market-item-name">{card.name}</span>
+                  <span className="market-item-set">{getSet(card)} #{card.number}</span>
+                </div>
               </div>
               <div className="market-item-right">
-                <span className="market-price">${price.toFixed(2)}</span>
-                <span className="market-change text-green">+1.01%</span>
+                <span className="market-item-price">${price.toFixed(2)}</span>
+                <span className={`market-item-change ${changeUp ? 'up' : 'down'}`}>
+                  {changeUp ? '▲' : '▼'} {Math.abs(change).toFixed(2)}%
+                </span>
               </div>
             </div>
           );
