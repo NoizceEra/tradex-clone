@@ -56,15 +56,28 @@ export function OrderEntry({ selectedCard, portfolio, executeTrade, supplemental
             <div style={{color: 'var(--text-muted)'}}>
               Live graded pricing data retrieved.
             </div>
-            {supplementalData.justTcg.prices && (
-              <div style={{marginTop: '0.4rem'}}>
-                {Object.entries(supplementalData.justTcg.prices).slice(0, 3).map(([key, val]) => (
-                  <div key={key} style={{display:'flex', justifyContent:'space-between'}}>
-                    <span>{key}</span><strong style={{color:'var(--success)'}}>${val}</strong>
+            {(() => {
+              const justData = Array.isArray(supplementalData.justTcg) 
+                ? supplementalData.justTcg[0] 
+                : supplementalData.justTcg?.data 
+                  ? supplementalData.justTcg.data[0] 
+                  : supplementalData.justTcg;
+              
+              if (justData && justData.prices) {
+                return (
+                  <div style={{marginTop: '0.4rem'}}>
+                    {Object.entries(justData.prices).slice(0, 3).map(([key, val]) => (
+                      <div key={key} style={{display:'flex', justifyContent:'space-between'}}>
+                        <span>{key}</span><strong style={{color:'var(--success)'}}>${val}</strong>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
+                );
+              } else if (justData) {
+                return <div style={{marginTop:'0.4rem'}}>Pricing structure varied.</div>;
+              }
+              return null;
+            })()}
           </div>
         )}
       </div>
