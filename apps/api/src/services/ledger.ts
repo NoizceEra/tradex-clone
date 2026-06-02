@@ -1,0 +1,115 @@
+import { randomUUID } from 'node:crypto';
+import type { Queryer } from '../db/client.ts';
+
+/**
+ * Double-entry ledger. Every money movement is a balanced set of entries (Σ = 0).
+ * `balances` is a cache updated in the same transaction as the entries; the
+ * reconciler proves it equals SUM(ledger_entries) and that every txn nets to zero.
+ *
+ * All `postTxn` calls MUST run inside a db.tx(...) so entries + balance updates
+ * commit atomically and the deferred balanced-txn constraint can validate at COMMIT.
+ */
+
+export type AccountType =
+  | 'USER_COLLATERAL'
+  | 'USER_POSITION_MARGIN'
+  | 'LP_POOL'
+  | 'INSURANCE_FUND'
+  | 'FEE_REVENUE'
+  | 'FUNDING_POOL'
+  | 'PNL_CLEARING'
+  | 'FAUCET_SOURCE';
+
+/** System (house) accounts — one row each, user_id NULL. */
+export const SYSTEM_ACCOUNT_TYPES: AccountType[] = [
+  'LP_POOL',
+  'INSURANCE_FUND',
+  'FEE_REVENUE',
+  'FUNDING_POOL',
+  'PNL_CLEARING',
+  'FAUCET_SOURCE',
+];
+
+export interface Entry {
+  accountId: string;
+  amount: bigint; // signed micro-USDC; +credit / -debit
+}
+
+export interface PostTxnOpts {
+  reason: string;
+  refType?: string | null;
+  refId?: string | null;
+  entries: Entry[];
+}
+
+export async function getOrCreateSystemAccount(q: Queryer, type: AccountType): Promise<string> {
+  const id = randomUUID();
+  await q.query(
+    `INSERT INTO accounts(id, user_id, type) VALUES($1, NULL, $2)
+     ON CONFLICT (type) WHERE user_id IS NULL DO NOTHING`,
+    [id, type],
+  );
+  const r = await q.query<{ id: string }>(
+    `SELECT id FROM accounts WHERE user_id IS NULL AND type = $1`,
+    [type],
+  );
+  return r.rows[0].id;
+}
+
+export async function getOrCreateUserAccount(q: Queryer, userId: string, type: AccountType): Promise<string> {
+  const id = randomUUID();
+  await q.query(
+    `INSERT INTO accounts(id, user_id, type) VALUES($1, $2, $3)
+     ON CONFLICT (user_id, type) WHERE user_id IS NOT NULL DO NOTHING`,
+    [id, userId, type],
+  );
+  const r = await q.query<{ id: string }>(
+    `SELECT id FROM accounts WHERE user_id = $1 AND type = $2`,
+    [userId, type],
+  );
+  return r.rows[0].id;
+}
+
+export async function ensureSystemAccounts(q: Queryer): Promise<Record<AccountType, string>> {
+  const out = {} as Record<AccountType, string>;
+  for (const t of SYSTEM_ACCOUNT_TYPES) out[t] = await getOrCreateSystemAccount(q, t);
+  return out;
+}
+
+/**
+ * Post a balanced set of ledger entries as one transaction record. Asserts Σ = 0
+ * (friendly error), then writes entries + updates the balance cache. Returns txn_id.
+ */
+export async function postTxn(q: Queryer, opts: PostTxnOpts): Promise<string> {
+  const { reason, refType = null, refId = null, entries } = opts;
+  if (entries.length === 0) throw new Error('postTxn: no entries');
+  const sum = entries.reduce((a, e) => a + e.amount, 0n);
+  if (sum !== 0n) throw new Error(`postTxn: unbalanced entries (sum=${sum.toString()})`);
+
+  const txnId = randomUUID();
+  for (const e of entries) {
+    if (e.amount === 0n) continue; // skip no-op legs
+    await q.query(
+      `INSERT INTO ledger_entries(txn_id, account_id, amount_uusdc, reason, ref_type, ref_id)
+       VALUES($1, $2, $3, $4, $5, $6)`,
+      [txnId, e.accountId, e.amount.toString(), reason, refType, refId],
+    );
+    await q.query(
+      `INSERT INTO balances(account_id, amount_uusdc, version) VALUES($1, $2, 1)
+       ON CONFLICT(account_id) DO UPDATE
+         SET amount_uusdc = balances.amount_uusdc + EXCLUDED.amount_uusdc,
+             version = balances.version + 1,
+             updated_at = now()`,
+      [e.accountId, e.amount.toString()],
+    );
+  }
+  return txnId;
+}
+
+export async function getBalance(q: Queryer, accountId: string): Promise<bigint> {
+  const r = await q.query<{ amt: string }>(
+    `SELECT amount_uusdc::text AS amt FROM balances WHERE account_id = $1`,
+    [accountId],
+  );
+  return r.rows[0] ? BigInt(r.rows[0].amt) : 0n;
+}
