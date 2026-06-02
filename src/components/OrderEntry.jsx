@@ -9,6 +9,7 @@ const getPrice = (card) => {
 };
 
 export function OrderEntry({ selectedCard }) {
+  const [modalCard, setModalCard] = React.useState(null);
   const [side, setSide] = useState('buy');
   const [amount, setAmount] = useState('');
 
@@ -20,7 +21,7 @@ export function OrderEntry({ selectedCard }) {
     <div className="order-panel">
 
       {/* Card Preview */}
-      <div className="card-preview">
+      <div className="card-preview" onClick={() => selectedCard && setModalCard(selectedCard)} style={{cursor: selectedCard ? 'pointer' : 'default'}}>
         {selectedCard ? (
           <img
             src={selectedCard.images.large}
@@ -95,11 +96,22 @@ export function OrderEntry({ selectedCard }) {
 
         {/* Place Order */}
         <button
-          className={`place-order-btn ${side}`}
-          disabled={!selectedCard || !amount}
-        >
-          {side === 'buy' ? '▶ BUY' : '▶ SELL'} {selectedCard ? selectedCard.name.toUpperCase() : '—'}
-        </button>
+            className={`place-order-btn ${side}`}
+            disabled={!selectedCard || !amount}
+          >
+            {side === 'buy' ? '▶ BUY' : '▶ SELL'} {selectedCard ? selectedCard.name.toUpperCase() : '—'}
+          </button>
+          {modalCard && (
+            <div className="modal" onClick={() => setModalCard(null)}>
+              <div className="modal-content" onClick={e => e.stopPropagation()}>
+                <img src={modalCard.images.large} alt={modalCard.name} style={{maxWidth:'80vw',maxHeight:'80vh'}} />
+                <h3 style={{marginTop:'0.5rem',color:'var(--text)'}}>{modalCard.name} #{modalCard.number}</h3>
+                <p style={{color:'var(--text-muted)'}}>Set: {modalCard.set?.name}</p>
+                <p style={{color:'var(--text)'}}>Price: ${getPrice(modalCard).toFixed(2)}</p>
+                <button onClick={() => setModalCard(null)} style={{marginTop:'0.5rem',padding:'0.4rem 0.8rem',background:'var(--bg-3)',border:'1px solid var(--border)',color:'var(--text)',cursor:'pointer'}}>Close</button>
+              </div>
+            </div>
+          )}
 
       </div>
     </div>

@@ -12,15 +12,39 @@ const getSet = (card) => card?.set?.name || '';
 export function SidebarMarkets({ cards, loading, selectedCard, onSelectCard }) {
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState('markets');
+  const [collapsed, setCollapsed] = useState(false);
 
   const filtered = cards.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <div className="sidebar">
-      {/* Tabs */}
+    <div className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+      {<div className="sidebar-header" style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.5rem 0.75rem'}}>
+        <span style={{fontSize:'0.6rem',color:'var(--text)'}}>Markets</span>
+        <button className="collapse-btn" onClick={() => setCollapsed(!collapsed)} style={{background:'none',border:'none',color:'var(--text-muted)',fontSize:'0.8rem',cursor:'pointer'}}>
+          {collapsed ? '▶' : '◀'}
+        </button>
+      </div>
+
       <div className="sidebar-tabs">
+        <button
+            className={`place-order-btn ${side}`}
+            disabled={!selectedCard || !amount}
+          >
+            {side === 'buy' ? '▶ BUY' : '▶ SELL'} {selectedCard ? selectedCard.name.toUpperCase() : '—'}
+          </button>
+          {modalCard && (
+            <div className="modal" onClick={() => setModalCard(null)}>
+              <div className="modal-content" onClick={e => e.stopPropagation()}>
+                <img src={modalCard.images.large} alt={modalCard.name} style={{maxWidth:'80vw',maxHeight:'80vh'}} />
+                <h3 style={{marginTop:'0.5rem',color:'var(--text)'}}>{modalCard.name} #{modalCard.number}</h3>
+                <p style={{color:'var(--text-muted)'}}>Set: {modalCard.set?.name}</p>
+                <p style={{color:'var(--text)'}}>Price: ${getPrice(modalCard).toFixed(2)}</p>
+                <button onClick={() => setModalCard(null)} style={{marginTop:'0.5rem',padding:'0.4rem 0.8rem',background:'var(--bg-3)',border:'1px solid var(--border)',color:'var(--text)',cursor:'pointer'}}>Close</button>
+              </div>
+            </div>
+          )}
         <button
           className={`sidebar-tab-btn ${tab === 'markets' ? 'active' : ''}`}
           onClick={() => setTab('markets')}
@@ -47,8 +71,25 @@ export function SidebarMarkets({ cards, loading, selectedCard, onSelectCard }) {
 
       {/* Column Headers */}
       <div className="sidebar-col-headers">
+        <span>#</span>
         <span>CARD</span>
         <span>PRICE</span>
+      </div>
+
+      {/* Card Preview */}
+      <div className="card-preview" onClick={() => setModalCard(selectedCard)} style={{cursor:selectedCard?'pointer':'default'}}>
+        {selectedCard ? (
+            <img
+              src={selectedCard.images.large}
+              alt={selectedCard.name}
+              className="preview-img"
+            />
+          ) : (
+            <div className="card-placeholder">Select a card<br/>from the market</div>
+          )}
+        {selectedCard && (
+            <div className="preview-label">{selectedCard.name} #{selectedCard.number}</div>
+          )}
       </div>
 
       {/* List */}
@@ -61,7 +102,7 @@ export function SidebarMarkets({ cards, loading, selectedCard, onSelectCard }) {
         {tab === 'positions' && !loading && (
           <div className="empty-state">No open positions.<br />Connect wallet to begin.</div>
         )}
-        {tab === 'markets' && filtered.map(card => {
+        {tab === 'markets' && filtered.map((card, idx) => {
           const price = getPrice(card);
           const isActive = selectedCard?.id === card.id;
           // Deterministic fake 24h change from card ID
@@ -76,6 +117,7 @@ export function SidebarMarkets({ cards, loading, selectedCard, onSelectCard }) {
               onClick={() => onSelectCard(card)}
             >
               <div className="market-item-left">
+                <span className="market-index" style={{fontSize:'0.4rem',color:'var(--text-muted)',marginRight:'0.3rem'}}>{idx + 1}.</span>
                 <img src={card.images.small} alt={card.name} className="market-thumb" />
                 <div className="market-item-info">
                   <span className="market-item-name">{card.name}</span>
