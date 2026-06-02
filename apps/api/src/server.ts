@@ -1,6 +1,9 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import { config } from './config.ts';
+import { HttpError } from './errors.ts';
+import { authRoutes } from './routes/auth.ts';
+import { accountRoutes } from './routes/account.ts';
 
 /**
  * Build the Fastify instance. Routes for auth/markets/orders/account/lp and the
@@ -22,6 +25,16 @@ export async function buildServer(): Promise<FastifyInstance> {
     credentials: true,
   });
 
+  app.setErrorHandler((err, req, reply) => {
+    if (err instanceof HttpError) return reply.code(err.statusCode).send({ error: err.message });
+    // zod ValidationError (may be a different zod instance than ours, so check structurally)
+    if (err && (err as { name?: string }).name === 'ZodError') {
+      return reply.code(400).send({ error: 'validation failed', issues: (err as { issues?: unknown }).issues });
+    }
+    req.log.error(err);
+    return reply.code(500).send({ error: 'internal error' });
+  });
+
   app.get('/health', async () => ({
     ok: true,
     service: 'pokex-api',
@@ -29,6 +42,9 @@ export async function buildServer(): Promise<FastifyInstance> {
     realFunds: config.realFunds,
     time: new Date().toISOString(),
   }));
+
+  await app.register(authRoutes);
+  await app.register(accountRoutes);
 
   return app;
 }

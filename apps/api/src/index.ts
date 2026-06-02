@@ -1,7 +1,9 @@
 import { buildServer } from './server.ts';
+import { initDb } from './db/init.ts';
 import { config } from './config.ts';
 
 async function main() {
+  await initDb();
   const app = await buildServer();
 
   try {
