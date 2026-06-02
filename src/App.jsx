@@ -90,7 +90,7 @@ function App() {
 
         // Fetch JustTCG data (using tcgplayer product id if available)
         const tcgplayerId = selectedCard.tcgplayer?.productId || selectedCard.id;
-        const justRes = await fetch(`https://api.justtcg.com/cards/${tcgplayerId}`, {
+        const justRes = await fetch(`/api/justtcg/cards/${tcgplayerId}`, {
           headers: { 'X-API-Key': 'tcg_3e15742bfe6e46a39d7f4cc3c6e6835a' }
         });
         const justTcgData = justRes.ok ? await justRes.json() : null;
