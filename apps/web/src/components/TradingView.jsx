@@ -1,14 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, AreaSeries } from 'lightweight-charts';
+import { getCardPrice as getPrice } from '@pokex/pricing';
 
 const TIMEFRAMES = ['1D', '1W', '1M', '3M', '1Y'];
-
-const getPrice = (card) => {
-  if (!card) return 0;
-  const p = card.tcgplayer?.prices;
-  if (!p) return 0;
-  return p.holofoil?.market || p.normal?.market || p['1stEditionHolofoil']?.market || 0;
-};
 
 export function TradingView({ selectedCard }) {
   const chartContainerRef = useRef(null);

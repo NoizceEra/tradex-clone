@@ -1,0 +1,17 @@
+{
+  "name": "@pokex/shared-types",
+  "version": "0.1.0",
+  "description": "Shared zod schemas + types for the PokeX API and WebSocket contracts",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "lint": "true",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  }
+}

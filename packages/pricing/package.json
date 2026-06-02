@@ -1,0 +1,14 @@
+{
+  "name": "@pokex/pricing",
+  "version": "0.1.0",
+  "description": "Shared pricing/PnL/margin/mark math for PokeX (FE previews and engine must agree)",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "lint": "true",
+    "test": "node --test"
+  }
+}

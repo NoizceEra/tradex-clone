@@ -1,16 +1,60 @@
-# React + Vite
+# PokeX
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A **leveraged perpetual-futures exchange on Pokémon-card prices**, settled in USDC.
+Trade perps on individual cards **and** on basket **indices** (Top 100 / Top 250, with
+Graded and Sealed indices planned). Index-anchored synthetic mark, pooled-LP counterparty,
+funding, and liquidations.
 
-Currently, two official plugins are available:
+> ⚠️ **Play-money MVP.** This build runs entirely on simulated balances (a faucet) and
+> Solana **devnet**. No real funds are accepted. It is a fan project for Pokémon TCG price
+> data (via [pokemontcg.io](https://pokemontcg.io)); it is **not** affiliated with Nintendo,
+> The Pokémon Company, or TCGFish, and is **not financial advice**. Real custody, deposits,
+> and withdrawals are gated behind a future security audit + legal/compliance review and are
+> intentionally **not** part of this build (`REAL_FUNDS` must stay `false`).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Monorepo layout
 
-## React Compiler
+```
+pokex/                 (pnpm workspaces + Turborepo)
+  apps/web             React 19 + Vite SPA — deployed on Vercel (retro "Press Start 2P" theme)
+  apps/api             Fastify + WebSocket backend: ledger, trading engine, oracle, liquidations
+  packages/pricing     Shared money math (price/PnL/margin/liq/mark) — FE previews must match engine
+  packages/shared-types  Shared zod schemas for the REST + WebSocket contracts
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Deployment topology (hybrid)
+- **Frontend → Vercel** (static SPA). Set the Vercel project **Root Directory** to `apps/web`.
+- **Backend → a long-running host** (Railway / Render / Fly.io) — the engine, WebSockets, and
+  liquidation/funding loops need a persistent process that Vercel's serverless model can't provide.
+- **Database → managed Postgres** (Neon / Supabase) in prod. Locally it uses **PGlite**
+  (embedded Postgres, zero system deps); the same SQL runs on hosted Postgres via `DATABASE_URL`.
 
-## Expanding the ESLint configuration
+## Develop
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Requires Node ≥ 20 and pnpm.
+
+```bash
+pnpm install
+
+# run both apps
+pnpm dev
+
+# or individually
+pnpm dev:web    # Vite dev server (http://localhost:5173)
+pnpm dev:api    # Fastify api  (http://localhost:4000)
+```
+
+API config lives in `apps/api/.env` (copy from `apps/api/.env.example`). With no `DATABASE_URL`
+set it uses an embedded PGlite database under `apps/api/.pglite/`.
+
+```bash
+pnpm build      # build all workspaces
+pnpm lint       # lint / typecheck all workspaces
+pnpm test       # run tests
+```
+
+## Status
+
+See `docs`/the project plan for the full roadmap. Current focus: the play-money engine
+(ledger → auth/faucet → oracle/marks → trading → LP/funding → liquidations → UI), tuned on
+devnet before any real-funds work is considered.

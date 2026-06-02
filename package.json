@@ -1,36 +1,21 @@
 {
-  "name": "tradex-clone",
+  "name": "pokex",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+  "version": "0.1.0",
+  "description": "PokeX — leveraged perpetual-futures exchange on Pokémon-card prices (play-money MVP)",
+  "packageManager": "pnpm@11.0.9",
+  "engines": {
+    "node": ">=20"
   },
-  "dependencies": {
-    "@solana/wallet-adapter-base": "^0.9.27",
-    "@solana/wallet-adapter-react": "^0.15.39",
-    "@solana/wallet-adapter-react-ui": "^0.9.39",
-    "@solana/wallet-adapter-wallets": "^0.19.38",
-    "@solana/web3.js": "^1.98.4",
-    "bs58": "^6.0.0",
-    "buffer": "^6.0.3",
-    "lightweight-charts": "^5.2.0",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6",
-    "react-ts-tradingview-widgets": "^1.2.8"
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:web": "pnpm --filter @pokex/web dev",
+    "dev:api": "pnpm --filter @pokex/api dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
-    "eslint": "^10.3.0",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.2",
-    "globals": "^17.6.0",
-    "vite": "^8.0.12"
+    "turbo": "^2.3.3"
   }
 }

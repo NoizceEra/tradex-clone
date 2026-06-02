@@ -1,11 +1,5 @@
-import React, { useState } from 'react';
-
-const getPrice = (card) => {
-  if (!card) return 0;
-  const p = card.tcgplayer?.prices;
-  if (!p) return 0;
-  return p.holofoil?.market || p.normal?.market || p['1stEditionHolofoil']?.market || 0;
-};
+import { useState } from 'react';
+import { getCardPrice as getPrice } from '@pokex/pricing';
 
 const getSet = (card) => card?.set?.name || '';
 

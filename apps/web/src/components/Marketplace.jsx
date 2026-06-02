@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { getCardPrice } from '@pokex/pricing';
 
 const CARDS_PER_PAGE = 8; // 4 per side, 2 pages visible
 
@@ -39,14 +40,10 @@ export function Marketplace({ cards, loading, onTradeCard }) {
     return () => window.removeEventListener('keydown', handler);
   }, [navigate]);
 
-  // Reset page on search
-  useEffect(() => { setPage(0); }, [search]);
+  // (page reset happens in the search input's onChange)
 
-  const getPrice = (card) => {
-    const p = card.tcgplayer?.prices;
-    if (!p) return null;
-    return p.holofoil?.market || p.normal?.market || p['1stEditionHolofoil']?.market || null;
-  };
+  // Returns 0 when unavailable; rendered as 'N/A' below.
+  const getPrice = (card) => getCardPrice(card);
 
   return (
     <div className="marketplace-view">
@@ -64,7 +61,7 @@ export function Marketplace({ cards, loading, onTradeCard }) {
             type="text"
             placeholder="Search cards..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => { setSearch(e.target.value); setPage(0); }}
           />
 
           <span className="binder-page-info">

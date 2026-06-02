@@ -6,6 +6,7 @@ import './index.css';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
+import { clusterApiUrl } from '@solana/web3.js';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 // Web3 polyfills might be needed for some wallet packages, but Vite often handles standard ones. 
@@ -13,9 +14,10 @@ import '@solana/wallet-adapter-react-ui/styles.css';
 import { Buffer } from 'buffer';
 window.Buffer = window.Buffer || Buffer;
 
+// eslint-disable-next-line react-refresh/only-export-components
 const RootApp = () => {
-  // You can use 'mainnet-beta', 'testnet', or 'devnet'
-  const endpoint = 'https://api.mainnet-beta.solana.com';
+  // Play-money MVP runs on devnet. Override with VITE_SOLANA_RPC in prod.
+  const endpoint = import.meta.env.VITE_SOLANA_RPC || clusterApiUrl('devnet');
 
   const wallets = useMemo(
     () => [

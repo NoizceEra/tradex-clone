@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { SidebarMarkets } from './components/SidebarMarkets';
 import { TradingView } from './components/TradingView';
@@ -61,9 +61,10 @@ function App() {
   useEffect(() => {
     async function fetchCards() {
       try {
+        // Interim: keyless client fetch (no secret in the bundle). Moves to the
+        // server-side api proxy + oracle ingestor in a later task.
         const response = await fetch(
-          'https://api.pokemontcg.io/v2/cards?q=set.id:base1 supertype:Pokémon&orderBy=-tcgplayer.prices.holofoil.market&pageSize=60',
-          { headers: { 'X-Api-Key': '07c20d0a64mshf9bf046e5c2971dp18eebbjsnd624c80d8b9b' } }
+          'https://api.pokemontcg.io/v2/cards?q=set.id:base1 supertype:Pokémon&orderBy=-tcgplayer.prices.holofoil.market&pageSize=60'
         );
         const data = await response.json();
         if (data && data.data) {

@@ -1,12 +1,6 @@
 import React, { useState } from 'react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-
-const getPrice = (card) => {
-  if (!card) return 0;
-  const p = card.tcgplayer?.prices;
-  if (!p) return 0;
-  return p.holofoil?.market || p.normal?.market || p['1stEditionHolofoil']?.market || 0;
-};
+import { getCardPrice as getPrice } from '@pokex/pricing';
 
 export function OrderEntry({ selectedCard, portfolio, executeTrade }) {
   const [modalCard, setModalCard] = React.useState(null);
@@ -15,7 +9,6 @@ export function OrderEntry({ selectedCard, portfolio, executeTrade }) {
 
   const price = getPrice(selectedCard);
   const usdTotal = amount && price ? (parseFloat(amount) * price).toFixed(2) : '0.00';
-  const cardQty = amount && price ? parseFloat(amount) : 0;
 
   return (
     <div className="order-panel">

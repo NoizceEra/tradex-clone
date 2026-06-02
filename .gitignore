@@ -24,3 +24,16 @@ dist-ssr
 *.sw?
 
 .vercel
+.gstack/
+
+# Env / secrets (never commit; see apps/api/.env.example)
+.env
+.env.*
+!.env.example
+
+# Local embedded Postgres (PGlite) data dir
+.pglite/
+**/.pglite/
+
+# Turborepo cache
+.turbo
