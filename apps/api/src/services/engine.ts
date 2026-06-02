@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { notional, initialMargin, unrealizedPnl, liquidationPrice, fee } from '@pokex/pricing';
+import { notional, initialMargin, maintenanceMargin, unrealizedPnl, liquidationPrice, fee } from '@pokex/pricing';
 import { HttpError } from '../errors.ts';
 import { config } from '../config.ts';
 import type { Db, Queryer } from '../db/client.ts';
@@ -398,4 +398,146 @@ export async function getUserPositions(db: Db, userId: string): Promise<Position
 export async function getUserUnrealizedPnl(db: Db, userId: string): Promise<bigint> {
   const positions = await getUserPositions(db, userId);
   return positions.reduce((a, p) => a + BigInt(p.unrealizedPnlUusdc), 0n);
+}
+
+// ---- liquidations ---------------------------------------------------------
+
+/** A position is liquidatable when its equity has fallen to/below maintenance margin. */
+function isLiquidatable(pos: PositionRow, market: MarketRow, markE6: bigint): boolean {
+  const qty = BigInt(pos.qty_e6);
+  const equity = BigInt(pos.margin_uusdc) + unrealizedPnl(pos.side, qty, BigInt(pos.avg_entry_e6), markE6);
+  const maint = maintenanceMargin(notional(qty, markE6), market.maint_margin_bps);
+  return equity <= maint;
+}
+
+/**
+ * Force-close a position at the mark. The user's loss is capped at their margin; any shortfall
+ * (bad debt, e.g. a gap through the liq price) is drawn from the insurance fund, and whatever
+ * the insurance can't cover is socialized to the LP pool. A liquidation penalty (from any
+ * remaining equity) tops up the insurance fund. Every leg is a balanced ledger txn.
+ */
+async function liquidatePositionInTx(q: Queryer, pos: PositionRow, market: MarketRow, markE6: bigint, indexE6: bigint): Promise<void> {
+  await settlePositionFunding(q, pos, market.id);
+
+  const qty = BigInt(pos.qty_e6);
+  const entry = BigInt(pos.avg_entry_e6);
+  const margin = BigInt(pos.margin_uusdc);
+  const pnl = unrealizedPnl(pos.side, qty, entry, markE6);
+  const lossAbs = pnl < 0n ? -pnl : 0n;
+  const liqFee = fee(notional(qty, markE6), config.liqFeeBps);
+
+  const coll = await getOrCreateUserAccount(q, pos.user_id, 'USER_COLLATERAL');
+  const marginAcct = await getOrCreateUserAccount(q, pos.user_id, 'USER_POSITION_MARGIN');
+  const lp = await getOrCreateSystemAccount(q, 'LP_POOL');
+  const insurance = await getOrCreateSystemAccount(q, 'INSURANCE_FUND');
+
+  // release the locked margin back to collateral
+  await postTxn(q, { reason: 'MARGIN_RELEASE', refType: 'liquidation', refId: pos.id, entries: [
+    { accountId: marginAcct, amount: -margin },
+    { accountId: coll, amount: margin },
+  ] });
+
+  let lossToUser = 0n;
+  let badDebt = 0n;
+  let drawn = 0n;
+  let socialized = 0n;
+  let liqFeeTaken = 0n;
+
+  if (pnl > 0n) {
+    await postTxn(q, { reason: 'REALIZED_PNL', refType: 'liquidation', refId: pos.id, entries: [
+      { accountId: coll, amount: pnl },
+      { accountId: lp, amount: -pnl },
+    ] });
+  } else if (lossAbs > 0n) {
+    lossToUser = lossAbs < margin ? lossAbs : margin; // user can only lose their margin
+    await postTxn(q, { reason: 'REALIZED_PNL', refType: 'liquidation', refId: pos.id, entries: [
+      { accountId: coll, amount: -lossToUser },
+      { accountId: lp, amount: lossToUser },
+    ] });
+    badDebt = lossAbs - lossToUser;
+    if (badDebt > 0n) {
+      const insBal = await getBalance(q, insurance);
+      drawn = badDebt < insBal ? badDebt : insBal > 0n ? insBal : 0n;
+      if (drawn > 0n) {
+        await postTxn(q, { reason: 'INSURANCE_TOPUP', refType: 'liquidation', refId: pos.id, entries: [
+          { accountId: insurance, amount: -drawn },
+          { accountId: lp, amount: drawn },
+        ] });
+      }
+      socialized = badDebt - drawn; // LP bears this (it simply receives less)
+    }
+  }
+
+  // liquidation penalty from any remaining released margin
+  const remaining = margin - lossToUser;
+  if (remaining > 0n) {
+    liqFeeTaken = liqFee < remaining ? liqFee : remaining;
+    if (liqFeeTaken > 0n) {
+      await postTxn(q, { reason: 'LIQUIDATION_FEE', refType: 'liquidation', refId: pos.id, entries: [
+        { accountId: coll, amount: -liqFeeTaken },
+        { accountId: insurance, amount: liqFeeTaken },
+      ] });
+    }
+  }
+
+  await q.query(
+    `UPDATE positions SET qty_e6=0, margin_uusdc=0, realized_pnl_uusdc=realized_pnl_uusdc+$1, status='liquidated', closed_at=now(), version=version+1 WHERE id=$2`,
+    [pnl.toString(), pos.id],
+  );
+  const orderId = randomUUID();
+  await q.query(
+    `INSERT INTO orders(id,user_id,market_id,idempotency_key,kind,side,qty_e6,leverage_e2,status)
+     VALUES($1,$2,$3,$4,'reduce_only',$5,$6,$7,'filled')`,
+    [orderId, pos.user_id, market.id, 'liq-' + pos.id + '-' + randomUUID(), pos.side, qty.toString(), pos.leverage_e2],
+  );
+  await q.query(
+    `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [randomUUID(), orderId, pos.id, market.id, markE6.toString(), qty.toString(), liqFeeTaken.toString(), pnl.toString()],
+  );
+  await q.query(
+    `INSERT INTO liquidations(id,position_id,market_id,user_id,trigger_mark_e6,closed_qty_e6,liquidation_fee_uusdc,bad_debt_uusdc,insurance_drawn_uusdc,socialized_uusdc)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+    [randomUUID(), pos.id, market.id, pos.user_id, markE6.toString(), qty.toString(), liqFeeTaken.toString(), badDebt.toString(), drawn.toString(), socialized.toString()],
+  );
+
+  await refreshMark(q, market, indexE6);
+  await refreshReserved(q);
+  publish(`positions:${pos.user_id}`, 'liquidated', { positionId: pos.id, markE6: markE6.toString() });
+  publish(`liquidations:${pos.user_id}`, 'liquidation', { positionId: pos.id, marketId: market.id, badDebtUusdc: badDebt.toString() });
+}
+
+/** Sweep a market: liquidate every open position whose equity is at/below maintenance margin. */
+export async function liquidateEligible(db: Db, marketId: string): Promise<number> {
+  const mi = await getLatestMarkIndex(db, marketId);
+  const market = await getMarketById(db, marketId);
+  if (!mi || !market) return 0;
+  const open = await db.query<PositionRow>(`SELECT ${POS_COLS} FROM positions p WHERE p.market_id=$1 AND p.status='open'`, [marketId]);
+  let count = 0;
+  for (const candidate of open.rows) {
+    if (!isLiquidatable(candidate, market, mi.markE6)) continue;
+    await withMarketLock(marketId, () =>
+      db.tx(async (q) => {
+        const fresh = await getOpenPosition(q, candidate.user_id, marketId, candidate.side);
+        if (!fresh || fresh.id !== candidate.id) return;
+        const mi2 = await getLatestMarkIndex(q, marketId);
+        if (!mi2 || !isLiquidatable(fresh, market, mi2.markE6)) return;
+        await liquidatePositionInTx(q, fresh, market, mi2.markE6, mi2.indexE6);
+        count++;
+      }),
+    );
+  }
+  return count;
+}
+
+/** Circuit breaker: halt markets whose latest accepted oracle print is older than the staleness window. */
+export async function haltStaleMarkets(db: Db, staleMs: number): Promise<number> {
+  const r = await db.query<{ id: string }>(
+    `UPDATE markets SET status='reduce_only'
+     WHERE kind='card' AND tradeable AND status='active'
+       AND id NOT IN (SELECT market_id FROM oracle_prices WHERE is_accepted AND ingested_at > now() - ($1 || ' milliseconds')::interval)
+     RETURNING id`,
+    [String(staleMs)],
+  );
+  return r.rows.length;
 }

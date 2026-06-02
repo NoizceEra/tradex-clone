@@ -50,6 +50,11 @@ export const config = {
   fundingBaseBorrowBps: num('FUNDING_BASE_BORROW_BPS', 1), // always-on, paid by both sides to LP
   fundingSkewFactorBps: num('FUNDING_SKEW_FACTOR_BPS', 30), // skew-balancing component (max)
   fundingIntervalMs: num('FUNDING_INTERVAL_MS', 60 * 60 * 1000), // hourly
+
+  // Liquidations + circuit breakers
+  liqFeeBps: num('LIQ_FEE_BPS', 100), // 1% liquidation penalty -> insurance fund
+  liquidationSweepMs: num('LIQUIDATION_SWEEP_MS', 5_000),
+  oracleStaleMs: num('ORACLE_STALE_MS', 36 * 60 * 60 * 1000), // halt a market if no fresh print
 };
 
 if (config.realFunds) {

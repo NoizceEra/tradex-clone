@@ -2,6 +2,7 @@ import { buildServer } from './server.ts';
 import { initDb } from './db/init.ts';
 import { ingest } from './services/oracle.ts';
 import { accrueFunding } from './services/funding.ts';
+import { liquidateEligible, haltStaleMarkets } from './services/engine.ts';
 import type { Db } from './db/client.ts';
 import type { FastifyBaseLogger } from 'fastify';
 import { config } from './config.ts';
@@ -28,6 +29,19 @@ function startFundingLoop(db: Db, log: FastifyBaseLogger) {
   setInterval(() => void run(), config.fundingIntervalMs);
 }
 
+function startLiquidationLoop(db: Db, log: FastifyBaseLogger) {
+  const run = async () => {
+    try {
+      const r = await db.query<{ id: string }>(`SELECT id FROM markets WHERE tradeable AND status IN ('active','reduce_only')`);
+      for (const m of r.rows) await liquidateEligible(db, m.id);
+      await haltStaleMarkets(db, config.oracleStaleMs);
+    } catch (e) {
+      log.error(e, 'liquidation sweep failed');
+    }
+  };
+  setInterval(() => void run(), config.liquidationSweepMs);
+}
+
 async function main() {
   const db = await initDb();
   const app = await buildServer();
@@ -37,6 +51,7 @@ async function main() {
     app.log.info(`PokeX api listening on :${config.port} (REAL_FUNDS=${config.realFunds})`);
     startOracleLoop(db, app.log);
     startFundingLoop(db, app.log);
+    startLiquidationLoop(db, app.log);
   } catch (err) {
     app.log.error(err);
     process.exit(1);
