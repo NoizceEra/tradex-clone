@@ -8,12 +8,32 @@ const getPrice = (card) => {
   return p.holofoil?.market || p.normal?.market || p['1stEditionHolofoil']?.market || 0;
 };
 
+/**
+ * Return the best available market price.
+ * Prefer a PSA-10 price if the JustTCG data contains it.
+ */
+const getMarketPrice = (card) => {
+  const base = getPrice(card);
+  // Pull JustTCG data that may contain graded pricing
+  const just = supplementalData?.justTcg
+    ? Array.isArray(supplementalData.justTcg)
+      ? supplementalData.justTcg[0]
+      : supplementalData.justTcg?.data?.[0] ?? supplementalData.justTcg
+    : null;
+  if (just && just.prices) {
+    const psa10 = just.prices.psa10 ?? just.prices['psa 10'] ?? just.prices['psa-10'];
+    if (psa10 && Number(psa10) > 0) return Number(psa10);
+  }
+  return base;
+};
+
 export function OrderEntry({ selectedCard, portfolio, executeTrade, supplementalData }) {
   const [modalCard, setModalCard] = React.useState(null);
-  const [side, setSide] = useState('buy');
+  const [side, setSide] = useState('long');
   const [amount, setAmount] = useState('');
+  const [showMore, setShowMore] = useState(false);
 
-  const price = getPrice(selectedCard);
+  const price = getMarketPrice(selectedCard);
   const usdTotal = amount && price ? (parseFloat(amount) * price).toFixed(2) : '0.00';
   const cardQty = amount && price ? parseFloat(amount) : 0;
 
@@ -51,35 +71,43 @@ export function OrderEntry({ selectedCard, portfolio, executeTrade, supplemental
         )}
 
         {supplementalData?.justTcg && (
-          <div className="mechanics-panel" style={{fontSize: '0.45rem', padding: '0.75rem', background: 'var(--bg-2)', border: '1px solid var(--border)', width: '100%', marginTop: '0.5rem', textAlign: 'left'}}>
-            <div style={{color:'var(--gold)', marginBottom:'0.4rem', textTransform: 'uppercase'}}>JustTCG Market Info</div>
-            <div style={{color: 'var(--text-muted)'}}>
-              Live graded pricing data retrieved.
+            <div className="mechanics-panel" style={{fontSize: '0.45rem', padding: '0.75rem', background: 'var(--bg-2)', border: '1px solid var(--border)', width: '100%', marginTop: '0.5rem', textAlign: 'left'}}>
+              <div style={{color:'var(--gold)', marginBottom:'0.4rem', textTransform: 'uppercase'}}>JustTCG Market Info</div>
+              <div style={{color: 'var(--text-muted)'}}>
+                Live graded pricing data retrieved.
+              </div>
+              {(() => {
+                const justData = Array.isArray(supplementalData.justTcg) 
+                  ? supplementalData.justTcg[0] 
+                  : supplementalData.justTcg?.data 
+                    ? supplementalData.justTcg.data[0] 
+                    : supplementalData.justTcg;
+                
+                if (justData && justData.prices) {
+                  return (
+                    <div style={{marginTop: '0.4rem'}}>
+                      {showMore ? (
+                        Object.entries(justData.prices).map(([key, val]) => (
+                          <div key={key} style={{display:'flex', justifyContent:'space-between'}}>
+                            <span>{key}</span><strong style={{color:'var(--success)'}}>${val}</strong>
+                          </div>
+                        ))
+                      ) : (
+                        Object.entries(justData.prices).slice(0, 3).map(([key, val]) => (
+                          <div key={key} style={{display:'flex', justifyContent:'space-between'}}>
+                            <span>{key}</span><strong style={{color:'var(--success)'}}>${val}</strong>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  );
+                } else if (justData) {
+                  return <div style={{marginTop:'0.4rem'}}>Pricing structure varied.</div>;
+                }
+                return null;
+              })()}
             </div>
-            {(() => {
-              const justData = Array.isArray(supplementalData.justTcg) 
-                ? supplementalData.justTcg[0] 
-                : supplementalData.justTcg?.data 
-                  ? supplementalData.justTcg.data[0] 
-                  : supplementalData.justTcg;
-              
-              if (justData && justData.prices) {
-                return (
-                  <div style={{marginTop: '0.4rem'}}>
-                    {Object.entries(justData.prices).slice(0, 3).map(([key, val]) => (
-                      <div key={key} style={{display:'flex', justifyContent:'space-between'}}>
-                        <span>{key}</span><strong style={{color:'var(--success)'}}>${val}</strong>
-                      </div>
-                    ))}
-                  </div>
-                );
-              } else if (justData) {
-                return <div style={{marginTop:'0.4rem'}}>Pricing structure varied.</div>;
-              }
-              return null;
-            })()}
-          </div>
-        )}
+          )}
       </div>
 
       {/* Order Form */}
@@ -88,16 +116,23 @@ export function OrderEntry({ selectedCard, portfolio, executeTrade, supplemental
         {/* Buy / Sell Toggle */}
         <div className="order-side-toggle">
           <button
-            className={`side-btn buy ${side === 'buy' ? 'active' : ''}`}
-            onClick={() => setSide('buy')}
+            className={`side-btn buy ${side === 'long' ? 'active' : ''}`}
+            onClick={() => setSide('long')}
           >
-            BUY
+            LONG
           </button>
           <button
-            className={`side-btn sell ${side === 'sell' ? 'active' : ''}`}
-            onClick={() => setSide('sell')}
+            className={`side-btn sell ${side === 'short' ? 'active' : ''}`}
+            onClick={() => setSide('short')}
           >
-            SELL
+            SHORT
+          </button>
+          <button
+            className="more-info-btn"
+            onClick={() => setShowMore(prev => !prev)}
+            style={{marginLeft: '0.5rem', padding: '0.2rem 0.5rem'}}
+          >
+            {showMore ? 'Hide Details' : 'Show More'}
           </button>
         </div>
 
@@ -145,11 +180,12 @@ export function OrderEntry({ selectedCard, portfolio, executeTrade, supplemental
             className={`place-order-btn ${side}`}
             disabled={!selectedCard || !amount || parseFloat(amount) <= 0}
             onClick={() => {
-              executeTrade(selectedCard, side, parseFloat(amount), price);
-              setAmount('');
-            }}
+               const tradeSide = side === 'long' ? 'buy' : 'sell';
+               executeTrade(selectedCard, tradeSide, parseFloat(amount), price);
+               setAmount('');
+             }}
           >
-            {side === 'buy' ? '▶ BUY' : '▶ SELL'} {selectedCard ? selectedCard.name.toUpperCase() : '—'}
+            {side === 'long' ? '▶ LONG' : '▶ SHORT'} {selectedCard ? selectedCard.name.toUpperCase() : '—'}
           </button>
           {modalCard && (
             <div className="modal" onClick={() => setModalCard(null)}>

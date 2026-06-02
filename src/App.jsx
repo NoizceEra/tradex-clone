@@ -80,34 +80,35 @@ function App() {
     fetchCards();
   }, []);
 
-  useEffect(() => {
-    async function fetchSupplemental() {
-      if (!selectedCard) return;
-      setSupplementalData(null);
-      try {
-        const tcgRes = await fetch(`https://api.tcgdex.net/v2/en/cards/${selectedCard.id}`);
-        const tcgdexData = tcgRes.ok ? await tcgRes.json() : null;
+  const refreshMarketStats = useCallback(async () => {
+    if (!selectedCard) return;
+    setSupplementalData(null);
+    try {
+      const tcgRes = await fetch(`https://api.tcgdex.net/v2/en/cards/${selectedCard.id}`);
+      const tcgdexData = tcgRes.ok ? await tcgRes.json() : null;
 
-        // Fetch JustTCG data (using tcgplayer product id if available)
-        const tcgplayerId = selectedCard.tcgplayer?.productId || selectedCard.id;
-        let justRes = await fetch(`/api/justtcg/v1/cards?tcgplayerId=${tcgplayerId}`, {
+      // Fetch JustTCG data (using tcgplayer product id if available)
+      const tcgplayerId = selectedCard.tcgplayer?.productId || selectedCard.id;
+      let justRes = await fetch(`/api/justtcg/v1/cards?tcgplayerId=${tcgplayerId}`, {
+        headers: { 'x-api-key': 'tcg_3e15742bfe6e46a39d7f4cc3c6e6835a' }
+      });
+      // If the tcgplayerId lookup fails (404), fall back to using the card's own ID
+      if (!justRes.ok && justRes.status === 404) {
+        justRes = await fetch(`/api/justtcg/v1/cards?cardId=${selectedCard.id}`, {
           headers: { 'x-api-key': 'tcg_3e15742bfe6e46a39d7f4cc3c6e6835a' }
         });
-        // If the tcgplayerId lookup fails (404), fall back to using the card's own ID
-        if (!justRes.ok && justRes.status === 404) {
-          justRes = await fetch(`/api/justtcg/v1/cards?cardId=${selectedCard.id}`, {
-            headers: { 'x-api-key': 'tcg_3e15742bfe6e46a39d7f4cc3c6e6835a' }
-          });
-        }
-        const justTcgData = justRes.ok ? await justRes.json() : null;
-
-        setSupplementalData({ tcgdex: tcgdexData, justTcg: justTcgData });
-      } catch (e) {
-        console.error('Failed to fetch supplemental data', e);
       }
+      const justTcgData = justRes.ok ? await justRes.json() : null;
+
+      setSupplementalData({ tcgdex: tcgdexData, justTcg: justTcgData });
+    } catch (e) {
+      console.error('Failed to fetch supplemental data', e);
     }
-    fetchSupplemental();
   }, [selectedCard]);
+
+  useEffect(() => {
+    refreshMarketStats();
+  }, [refreshMarketStats]);
 
   // When user clicks "TRADE" from the binder, switch to exchange view
   const handleTradeCard = (card) => {
@@ -136,6 +137,7 @@ function App() {
             portfolio={portfolio} 
             executeTrade={executeTrade}
             supplementalData={supplementalData}
+            onRefresh={refreshMarketStats}
           />
         </div>
       ) : (
