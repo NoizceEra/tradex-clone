@@ -1,11 +1,11 @@
 import { config } from '../config.ts';
 import { HttpError } from '../errors.ts';
-import type { Db } from '../db/client.ts';
+import type { Db, Queryer } from '../db/client.ts';
 import { getOrCreateUserAccount, getOrCreateSystemAccount, postTxn, getBalance } from './ledger.ts';
 import { usdc } from '../money.ts';
 
 /** Play-money cap: don't let a user's available balance exceed this (faucet + referral bonus). */
-export const MAX_AVAILABLE_UUSDC = usdc(1_000_000);
+const MAX_AVAILABLE_UUSDC = usdc(1_000_000);
 
 export interface UserBalances {
   availableUusdc: bigint;
@@ -30,29 +30,44 @@ export async function getUserBalances(db: Db, userId: string): Promise<UserBalan
   return { availableUusdc, lockedMarginUusdc, equityUusdc: availableUusdc + lockedMarginUusdc };
 }
 
-/** Credit play USDC to a user from the FAUCET_SOURCE account (a balanced ledger txn). */
+/**
+ * Credit play USDC to a user from FAUCET_SOURCE, clamped so their available balance can't exceed the
+ * play-money cap. Returns the amount actually credited (0n if already at the cap) + the txn id. The
+ * single home for the cap-and-clamp rule — the faucet and the referral bonus both go through it.
+ */
+export async function creditCapped(
+  q: Queryer,
+  userId: string,
+  amount: bigint,
+  reason: string,
+  ref?: { refType: string; refId: string },
+): Promise<{ credited: bigint; txnId: string | null }> {
+  if (amount <= 0n) return { credited: 0n, txnId: null };
+  const coll = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
+  const faucet = await getOrCreateSystemAccount(q, 'FAUCET_SOURCE');
+  const headroom = MAX_AVAILABLE_UUSDC - (await getBalance(q, coll));
+  if (headroom <= 0n) return { credited: 0n, txnId: null };
+  const credit = amount < headroom ? amount : headroom; // clamp so balance can't exceed the cap
+  const txnId = await postTxn(q, {
+    reason,
+    refType: ref?.refType,
+    refId: ref?.refId,
+    entries: [
+      { accountId: coll, amount: credit },
+      { accountId: faucet, amount: -credit },
+    ],
+  });
+  return { credited: credit, txnId };
+}
+
+/** Credit the faucet's default play USDC; rejects with 429 once the user is at the cap. */
 export async function creditFaucet(db: Db, userId: string, amountUsd?: number): Promise<{ txnId: string; availableUusdc: bigint }> {
   if (config.realFunds) throw new HttpError(403, 'faucet disabled when REAL_FUNDS is on');
   const amount = usdc(amountUsd ?? config.faucetDefaultUsd);
   if (amount <= 0n) throw new HttpError(400, 'amount must be positive');
 
-  const txnId = await db.tx(async (q) => {
-    const coll = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
-    const faucet = await getOrCreateSystemAccount(q, 'FAUCET_SOURCE');
-    const current = await getBalance(q, coll);
-    const headroom = MAX_AVAILABLE_UUSDC - current;
-    if (headroom <= 0n) {
-      throw new HttpError(429, 'faucet limit reached — you already have plenty of play USDC');
-    }
-    const credit = amount < headroom ? amount : headroom; // clamp so balance can't exceed the cap
-    return postTxn(q, {
-      reason: 'FAUCET',
-      entries: [
-        { accountId: coll, amount: credit },
-        { accountId: faucet, amount: -credit },
-      ],
-    });
-  });
+  const { credited, txnId } = await db.tx((q) => creditCapped(q, userId, amount, 'FAUCET'));
+  if (credited <= 0n || !txnId) throw new HttpError(429, 'faucet limit reached — you already have plenty of play USDC');
 
   const balances = await getUserBalances(db, userId);
   return { txnId, availableUusdc: balances.availableUusdc };

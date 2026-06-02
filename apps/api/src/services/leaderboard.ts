@@ -1,5 +1,6 @@
 import { unrealizedPnl } from '@pokex/pricing';
 import type { Db } from '../db/client.ts';
+import { lpShareValue } from './lp.ts';
 
 export interface LeaderboardRow {
   rank: number;
@@ -28,7 +29,7 @@ export async function getLeaderboard(
 ): Promise<{ rows: LeaderboardRow[]; you: LeaderboardRow | null; total: number }> {
   const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
 
-  const [users, balances, deposits, volume, positions, pool, lpShares] = await Promise.all([
+  const [users, balances, deposits, volume, positions, marks, pool, lpShares] = await Promise.all([
     db.query<{ id: string; solana_pubkey: string }>(`SELECT id, solana_pubkey FROM users`),
     db.query<{ user_id: string; type: string; amt: string }>(
       `SELECT a.user_id, a.type, COALESCE(b.amount_uusdc, 0)::text AS amt
@@ -45,10 +46,13 @@ export async function getLeaderboard(
       `SELECT o.user_id, COALESCE(SUM(f.qty_e6 * f.exec_price_e6), 0)::text AS vol
        FROM fills f JOIN orders o ON o.id = f.order_id GROUP BY o.user_id`,
     ),
-    db.query<{ user_id: string; side: 'long' | 'short'; qty_e6: string; avg_entry_e6: string; mark_e6: string | null }>(
-      `SELECT p.user_id, p.side, p.qty_e6::text AS qty_e6, p.avg_entry_e6::text AS avg_entry_e6,
-              (SELECT mark_price_e6::text FROM marks m WHERE m.market_id = p.market_id ORDER BY computed_at DESC LIMIT 1) AS mark_e6
-       FROM positions p WHERE p.status = 'open'`,
+    db.query<{ user_id: string; side: 'long' | 'short'; qty_e6: string; avg_entry_e6: string; market_id: string }>(
+      `SELECT user_id, side, qty_e6::text AS qty_e6, avg_entry_e6::text AS avg_entry_e6, market_id
+       FROM positions WHERE status = 'open'`,
+    ),
+    // latest mark per market (one bounded scan, not a per-position probe), as in markets.ts
+    db.query<{ market_id: string; mark_e6: string }>(
+      `SELECT DISTINCT ON (market_id) market_id, mark_price_e6::text AS mark_e6 FROM marks ORDER BY market_id, computed_at DESC`,
     ),
     // LP pool NAV (the LP_POOL ledger balance) + outstanding shares, to value each LP position
     db.query<{ nav: string; shares: string }>(
@@ -64,19 +68,23 @@ export async function getLeaderboard(
   const deposited = new Map<string, bigint>();
   for (const r of deposits.rows) deposited.set(r.user_id, BigInt(r.amt));
 
-  // value each user's LP shares at the current share price (shares * NAV / totalShares), like lp.ts
+  // value each user's LP shares at the current share price, using lp.ts's canonical formula
   const nav = BigInt(pool.rows[0]?.nav ?? '0');
   const totalShares = BigInt(pool.rows[0]?.shares ?? '0');
   const lpValue = new Map<string, bigint>();
-  for (const r of lpShares.rows) lpValue.set(r.user_id, totalShares > 0n ? (BigInt(r.shares) * nav) / totalShares : 0n);
+  for (const r of lpShares.rows) lpValue.set(r.user_id, lpShareValue(BigInt(r.shares), nav, totalShares));
+
+  const markByMarket = new Map<string, bigint>();
+  for (const m of marks.rows) markByMarket.set(m.market_id, BigInt(m.mark_e6));
 
   const vol = new Map<string, bigint>();
   for (const r of volume.rows) vol.set(r.user_id, BigInt(r.vol) / 1_000_000n); // qty_e6*price_e6 (e12) -> notional micro-USDC (e6)
 
   const uPnl = new Map<string, bigint>();
   for (const p of positions.rows) {
-    if (!p.mark_e6) continue;
-    const pnl = unrealizedPnl(p.side, BigInt(p.qty_e6), BigInt(p.avg_entry_e6), BigInt(p.mark_e6));
+    const mark = markByMarket.get(p.market_id);
+    if (!mark) continue;
+    const pnl = unrealizedPnl(p.side, BigInt(p.qty_e6), BigInt(p.avg_entry_e6), mark);
     uPnl.set(p.user_id, (uPnl.get(p.user_id) ?? 0n) + pnl);
   }
 

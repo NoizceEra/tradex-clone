@@ -11,6 +11,11 @@ import { grossOpenNotional } from './oi.ts';
  * Withdrawals cannot dip below the capital reserved against open trader interest.
  */
 
+/** Value of an LP stake at the current share price: shares * NAV / total shares (0 when no shares). */
+export function lpShareValue(shares: bigint, nav: bigint, totalShares: bigint): bigint {
+  return totalShares > 0n ? (shares * nav) / totalShares : 0n;
+}
+
 async function poolMeta(q: Queryer): Promise<{ totalShares: bigint; reserved: bigint }> {
   const r = await q.query<{ s: string; r: string }>(
     `SELECT total_shares::text AS s, reserved_for_oi_uusdc::text AS r FROM lp_pool WHERE id='pool'`,
@@ -72,7 +77,7 @@ export async function lpWithdraw(db: Db, userId: string, shares: bigint): Promis
     const nav = await getBalance(q, lp);
     const { totalShares, reserved } = await poolMeta(q);
     if (totalShares <= 0n || nav <= 0n) throw new HttpError(400, 'pool is depleted');
-    const payout = (shares * nav) / totalShares;
+    const payout = lpShareValue(shares, nav, totalShares);
     if (payout <= 0n) throw new HttpError(400, 'nothing to withdraw');
     if (nav - payout < reserved) throw new HttpError(400, 'withdrawal would dip into capital backing open trades');
 
@@ -114,8 +119,7 @@ export async function getLpPosition(db: Db, userId: string): Promise<{ shares: s
   const pos = await db.query<{ s: string }>(`SELECT shares::text AS s FROM lp_positions WHERE user_id=$1`, [userId]);
   const shares = BigInt(pos.rows[0]?.s ?? '0');
   const { nav, totalShares } = await poolState(db);
-  const value = totalShares > 0n ? (shares * nav) / totalShares : 0n;
-  return { shares: shares.toString(), valueUusdc: value.toString() };
+  return { shares: shares.toString(), valueUusdc: lpShareValue(shares, nav, totalShares).toString() };
 }
 
 /** Recompute pool-wide reserved capital = gross open notional across all markets. */
