@@ -89,6 +89,7 @@ export async function authLogout() {
 // --- markets ---
 export const getMarkets = () => req('/markets');
 export const getCandles = (id, tf) => req(`/markets/${id}/candles?tf=${encodeURIComponent(tf)}`);
+export const getMarketDetails = (id) => req(`/markets/${id}/details`);
 
 // --- account / trading ---
 export const getBalance = () => req('/account/balance', { auth: true });

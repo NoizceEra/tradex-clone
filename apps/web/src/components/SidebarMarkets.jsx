@@ -117,7 +117,15 @@ export function SidebarMarkets({ markets, loading, selected, onSelect, collapsed
                   {m.imageSmall ? <img src={m.imageSmall} alt="" className="market-thumb" /> : <span className="market-thumb idx-thumb">IDX</span>}
                   <div className="market-item-info">
                     <span className="market-item-name">{m.displayName}</span>
-                    <span className="market-item-set">{m.kind === 'index' ? (m.tradeable ? `Index · ${m.maxLeverage}x` : 'Soon') : m.symbol}</span>
+                    <span className="market-item-set">
+                      {m.kind === 'card' && m.setLogo ? (
+                        <img src={m.setLogo} alt="" className="set-logo" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                      ) : m.kind === 'index' ? (
+                        m.tradeable ? `Index · ${m.maxLeverage}x` : 'Soon'
+                      ) : (
+                        m.symbol
+                      )}
+                    </span>
                   </div>
                 </div>
                 <div className="market-item-right">

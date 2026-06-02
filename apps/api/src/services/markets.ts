@@ -16,6 +16,7 @@ export interface MarketRow {
   variant: string | null;
   index_slug: string | null;
   image_small: string | null;
+  set_logo: string | null;
   status: string;
   tradeable: boolean;
   max_leverage_e2: number;
@@ -31,7 +32,7 @@ export interface MarketRow {
   price_tick_e6: string;
 }
 
-const COLS = `id, kind, symbol, display_name, card_id, variant, index_slug, image_small, status, tradeable,
+const COLS = `id, kind, symbol, display_name, card_id, variant, index_slug, image_small, set_logo, status, tradeable,
   max_leverage_e2, init_margin_bps, maint_margin_bps,
   max_oi_long_uusdc::text AS max_oi_long_uusdc, max_oi_short_uusdc::text AS max_oi_short_uusdc,
   skew_k_e6::text AS skew_k_e6, premium_cap_e6::text AS premium_cap_e6, max_dev_bps,
@@ -42,19 +43,28 @@ export async function getMarketById(q: Queryer, id: string): Promise<MarketRow |
   return r.rows[0] ?? null;
 }
 
-export async function upsertCardMarket(
-  q: Queryer,
-  opts: { symbol: string; cardId: string; displayName: string; variant: string | null; imageSmall: string | null },
-): Promise<string> {
+export interface CardUpsert {
+  symbol: string;
+  cardId: string;
+  displayName: string;
+  variant: string | null;
+  imageSmall: string | null;
+  imageLarge?: string | null;
+  setLogo?: string | null;
+  metadata?: unknown;
+}
+
+export async function upsertCardMarket(q: Queryer, opts: CardUpsert): Promise<string> {
   const id = randomUUID();
-  const oi = CARD_OI_CAP;
+  const meta = opts.metadata != null ? JSON.stringify(opts.metadata) : null;
   await q.query(
-    `INSERT INTO markets(id, kind, symbol, display_name, card_id, variant, image_small, tradeable,
+    `INSERT INTO markets(id, kind, symbol, display_name, card_id, variant, image_small, image_large, set_logo, metadata, tradeable,
        max_oi_long_uusdc, max_oi_short_uusdc)
-     VALUES($1, 'card', $2, $3, $4, $5, $6, true, $7, $7)
+     VALUES($1, 'card', $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $10)
      ON CONFLICT(symbol) DO UPDATE
-       SET display_name = EXCLUDED.display_name, image_small = EXCLUDED.image_small, variant = EXCLUDED.variant`,
-    [id, opts.symbol, opts.displayName, opts.cardId, opts.variant, opts.imageSmall, oi],
+       SET display_name = EXCLUDED.display_name, image_small = EXCLUDED.image_small, image_large = EXCLUDED.image_large,
+           set_logo = EXCLUDED.set_logo, metadata = EXCLUDED.metadata, variant = EXCLUDED.variant`,
+    [id, opts.symbol, opts.displayName, opts.cardId, opts.variant, opts.imageSmall, opts.imageLarge ?? null, opts.setLogo ?? null, meta, CARD_OI_CAP],
   );
   const r = await q.query<{ id: string }>(`SELECT id FROM markets WHERE symbol = $1`, [opts.symbol]);
   return r.rows[0].id;
@@ -88,6 +98,7 @@ export interface MarketView {
   cardId: string | null;
   indexSlug: string | null;
   imageSmall: string | null;
+  setLogo: string | null;
   status: string;
   tradeable: boolean;
   maxLeverage: number;
@@ -97,6 +108,25 @@ export interface MarketView {
   markE6: string | null;
   indexE6: string | null;
   change24hPct: number;
+}
+
+/** Per-market details (card metadata + graded price) for the detail panel. */
+export interface MarketDetails {
+  imageLarge: string | null;
+  setLogo: string | null;
+  metadata: unknown; // { hp, retreat, attacks[], setName }
+  gradedPsa10E6: string | null;
+}
+
+export async function getMarketDetails(db: Db, id: string): Promise<MarketDetails | null> {
+  const r = await db.query<{ image_large: string | null; set_logo: string | null; metadata: unknown; graded: string | null }>(
+    `SELECT image_large, set_logo, metadata, graded_psa10_e6::text AS graded FROM markets WHERE id = $1`,
+    [id],
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  const metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : (row.metadata ?? null);
+  return { imageLarge: row.image_large, setLogo: row.set_logo, metadata, gradedPsa10E6: row.graded };
 }
 
 export async function listMarketsWithData(db: Db): Promise<MarketView[]> {
@@ -133,6 +163,7 @@ export async function listMarketsWithData(db: Db): Promise<MarketView[]> {
       cardId: m.card_id,
       indexSlug: m.index_slug,
       imageSmall: m.image_small,
+      setLogo: m.set_logo,
       status: m.status,
       tradeable: m.tradeable,
       maxLeverage: Math.round(m.max_leverage_e2 / 100),

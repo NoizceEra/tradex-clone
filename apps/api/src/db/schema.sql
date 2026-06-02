@@ -97,6 +97,10 @@ CREATE TABLE IF NOT EXISTS markets (
   variant            TEXT,
   index_slug         TEXT,
   image_small        TEXT,
+  image_large        TEXT,
+  set_logo           TEXT,                            -- pokemontcg set.images.logo
+  metadata           JSONB,                           -- { hp, retreat, attacks[], setName }
+  graded_psa10_e6    BIGINT,                          -- PSA-10 price (JustTCG), null until sourced
   status             TEXT NOT NULL DEFAULT 'active',  -- active|reduce_only|halted|delisted
   tradeable          BOOLEAN NOT NULL DEFAULT true,
   max_leverage_e2    INT NOT NULL DEFAULT 2000,       -- 20.00x
@@ -113,6 +117,11 @@ CREATE TABLE IF NOT EXISTS markets (
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_markets_kind ON markets(kind, status);
+-- upgrade existing DBs (no-op on a fresh schema)
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS image_large TEXT;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS set_logo TEXT;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS metadata JSONB;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS graded_psa10_e6 BIGINT;
 
 CREATE TABLE IF NOT EXISTS index_constituents (
   id        TEXT PRIMARY KEY,

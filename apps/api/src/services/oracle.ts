@@ -22,9 +22,39 @@ function pickVariant(c: any): string | null {
   return null;
 }
 
+/** Card metadata for the detail panel, extracted from the pokemontcg card we already fetch. */
+function extractMetadata(c: any): { hp: string | null; retreat: number; attacks: { name: string; damage: string }[]; setName: string | null } {
+  return {
+    hp: c?.hp ?? null,
+    retreat: Array.isArray(c?.retreatCost) ? c.retreatCost.length : (c?.convertedRetreatCost ?? 0),
+    attacks: Array.isArray(c?.attacks) ? c.attacks.map((a: any) => ({ name: a?.name ?? '', damage: a?.damage ?? '' })) : [],
+    setName: c?.set?.name ?? null,
+  };
+}
+
+/** Returns the PSA-10 graded price (USD) for a card, or null. Injectable for tests. */
+export type GradedFetcher = (card: any) => Promise<number | null>;
+
+async function fetchGradedPrice(card: any): Promise<number | null> {
+  if (!config.justtcgApiKey) return null;
+  const pid = card?.tcgplayer?.productId;
+  const query = pid ? `tcgplayerId=${pid}` : `cardId=${encodeURIComponent(card?.id ?? '')}`;
+  try {
+    const res = await fetch(`${config.justtcgBase}/v1/cards?${query}`, { headers: { 'x-api-key': config.justtcgApiKey } });
+    if (!res.ok) return null;
+    const json = (await res.json()) as any;
+    const row = Array.isArray(json) ? json[0] : (json?.data?.[0] ?? json);
+    const psa10 = row?.prices?.psa10 ?? row?.prices?.['psa 10'] ?? row?.prices?.['psa-10'];
+    const n = psa10 != null ? Number(psa10) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Live fetcher: top Pokémon cards by TCGplayer market price (server-side, keyless-ok). */
 export async function fetchTopCards(): Promise<any[]> {
-  const url = `${config.pokemontcgBase}/cards?q=supertype:Pok%C3%A9mon&orderBy=-tcgplayer.prices.holofoil.market&pageSize=250`;
+  const url = `${config.pokemontcgBase}/cards?q=supertype:Pok%C3%A9mon&orderBy=-tcgplayer.prices.holofoil.market&pageSize=${config.oraclePageSize}`;
   const headers: Record<string, string> = {};
   if (config.pokemontcgApiKey) headers['X-Api-Key'] = config.pokemontcgApiKey;
   const res = await fetch(url, { headers });
@@ -80,7 +110,11 @@ async function recordOracle(
 }
 
 /** Ingest a price snapshot: upsert card markets, record prints, recompute marks, rebuild indices. */
-export async function ingest(db: Db, fetcher: CardFetcher = fetchTopCards): Promise<{ cards: number; indices: number }> {
+export async function ingest(
+  db: Db,
+  fetcher: CardFetcher = fetchTopCards,
+  gradedFetcher: GradedFetcher | null = config.justtcgApiKey ? fetchGradedPrice : null,
+): Promise<{ cards: number; indices: number; graded: number }> {
   const raw = await fetcher();
   const observedAt = new Date();
   const priced = raw
@@ -95,6 +129,9 @@ export async function ingest(db: Db, fetcher: CardFetcher = fetchTopCards): Prom
         displayName: `${c.name}${c.number ? ' #' + c.number : ''}`,
         variant: pickVariant(c),
         imageSmall: c.images?.small ?? null,
+        imageLarge: c.images?.large ?? null,
+        setLogo: c.set?.images?.logo ?? null,
+        metadata: extractMetadata(c),
       }),
     );
     const accepted = await db.tx((q) => recordOracle(q, marketId, priceE6, observedAt, { tcgplayer: c.tcgplayer ?? null }));
@@ -105,8 +142,32 @@ export async function ingest(db: Db, fetcher: CardFetcher = fetchTopCards): Prom
   }
 
   const sorted = [...priced].sort((a, b) => (b.priceE6 > a.priceE6 ? 1 : b.priceE6 < a.priceE6 ? -1 : 0));
+
+  // Graded (PSA-10) prices for the top-N — powers the Graded index + per-card graded panel.
+  const gradedMembers: { cardId: string; priceE6: bigint }[] = [];
+  if (gradedFetcher) {
+    for (const { c } of sorted.slice(0, config.gradedConstituents)) {
+      const g = await gradedFetcher(c);
+      if (g != null && g > 0) {
+        const gE6 = toE6(g);
+        await db.query(`UPDATE markets SET graded_psa10_e6=$1 WHERE card_id=$2 AND kind='card'`, [gE6.toString(), c.id]);
+        gradedMembers.push({ cardId: c.id as string, priceE6: gE6 });
+      }
+    }
+  }
+
   let indices = 0;
   for (const idx of INDEX_CATALOG) {
+    if (idx.slug === 'graded') {
+      // tradeable only when we actually have PSA-10 data; priced off the graded basket
+      if (gradedMembers.length > 0) {
+        await buildIndex(db, idx, gradedMembers, observedAt);
+        indices++;
+      } else {
+        await db.tx((q) => upsertIndexMarket(q, { slug: idx.slug, name: idx.name, tradeable: false }));
+      }
+      continue;
+    }
     if (!idx.tradeable) {
       await db.tx((q) => upsertIndexMarket(q, { slug: idx.slug, name: idx.name, tradeable: false }));
       continue;
@@ -116,7 +177,7 @@ export async function ingest(db: Db, fetcher: CardFetcher = fetchTopCards): Prom
     await buildIndex(db, idx, members, observedAt);
     indices++;
   }
-  return { cards: priced.length, indices };
+  return { cards: priced.length, indices, graded: gradedMembers.length };
 }
 
 async function buildIndex(

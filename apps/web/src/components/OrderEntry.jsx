@@ -18,6 +18,17 @@ export function OrderEntry({ market, onTraded }) {
   const [positions, setPositions] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [details, setDetails] = useState(null);
+  const [showMore, setShowMore] = useState(false);
+
+  useEffect(() => {
+    if (!market?.id) return;
+    let alive = true;
+    api.getMarketDetails(market.id).then((d) => alive && setDetails(d)).catch(() => alive && setDetails(null));
+    return () => {
+      alive = false;
+    };
+  }, [market?.id]);
 
   const maxLev = market?.maxLeverage ?? 20;
   const leverage = Math.min(leverageInput, maxLev); // clamp during render (no setState-in-effect)
@@ -91,6 +102,39 @@ export function OrderEntry({ market, onTraded }) {
         )}
         <div className="preview-label">{market.displayName}</div>
       </div>
+
+      {details && (details.gradedPsa10E6 || details.metadata) && (
+        <div className="details-panel">
+          <button className="more-info-btn" onClick={() => setShowMore((v) => !v)}>
+            {showMore ? 'Hide details' : 'Show more'}
+          </button>
+          {showMore && (
+            <div className="details-body">
+              {details.gradedPsa10E6 && (
+                <div className="detail-row">
+                  <span>PSA-10</span>
+                  <strong className="up">{formatUsd(BigInt(details.gradedPsa10E6))}</strong>
+                </div>
+              )}
+              {details.metadata?.setName && (
+                <div className="detail-row"><span>Set</span><strong>{details.metadata.setName}</strong></div>
+              )}
+              {details.metadata?.hp && (
+                <div className="detail-row"><span>HP</span><strong>{details.metadata.hp}</strong></div>
+              )}
+              {details.metadata && (
+                <div className="detail-row"><span>Retreat</span><strong>{details.metadata.retreat ?? 0}</strong></div>
+              )}
+              {(details.metadata?.attacks ?? []).map((a, i) => (
+                <div key={i} className="detail-attack">
+                  {a.name}
+                  {a.damage ? ` · ${a.damage}` : ''}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="order-form">
         {!market.tradeable && <div className="order-gated">Data source pending — not yet tradeable.</div>}
