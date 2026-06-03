@@ -1,4 +1,5 @@
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { shortenPubkey } from '@pokex/pricing';
 import { useAuth } from '../auth/AuthContext';
 
 export function AuthButton() {
@@ -16,9 +17,7 @@ export function AuthButton() {
 
   return (
     <div className="auth-pill">
-      <span className="auth-addr">
-        {pubkey.slice(0, 4)}…{pubkey.slice(-4)}
-      </span>
+      <span className="auth-addr">{shortenPubkey(pubkey)}</span>
       <button className="btn-ghost" onClick={() => logout()}>
         Logout
       </button>

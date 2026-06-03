@@ -107,6 +107,11 @@ export const ReferralCodeRequest = z.object({
 
 export const ChatPostRequest = z.object({
   body: z.string().trim().min(1).max(280),
+  replyTo: z.string().min(1).optional(), // parent message id when replying
+});
+
+export const UsernameRequest = z.object({
+  username: z.string().trim().min(3).max(20).regex(/^[A-Za-z0-9_-]+$/, 'letters, numbers, _ and - only'),
 });
 
 // --- auth (SIWS) -------------------------------------------------------------

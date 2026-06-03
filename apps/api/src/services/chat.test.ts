@@ -9,7 +9,7 @@ process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long';
 
 const { getDb, closeDb } = await import('../db/client.ts');
 const { initDb } = await import('../db/init.ts');
-const { postChat, listChat } = await import('./chat.ts');
+const { postChat, listChat, getProfile, setUsername } = await import('./chat.ts');
 const { onMessage } = await import('./bus.ts');
 
 await initDb();
@@ -42,6 +42,40 @@ test('chat: empty and over-length messages are rejected', async () => {
   const u = await newUser();
   await assert.rejects(postChat(db, u, '    '), /empty/);
   await assert.rejects(postChat(db, u, 'x'.repeat(281)), /too long/);
+});
+
+test('chat: a user can set a unique username; the handle uses it; dupes/bad formats rejected', async () => {
+  const a = await newUser();
+  const b = await newUser();
+
+  const r = await setUsername(db, a, 'Ash_Ketchum');
+  assert.equal(r.username, 'Ash_Ketchum');
+  const prof = await getProfile(db, a);
+  assert.equal(prof.username, 'Ash_Ketchum');
+  assert.equal(prof.handle, 'Ash_Ketchum');
+
+  const posted = await postChat(db, a, 'gotta catch em all');
+  assert.equal(posted.handle, 'Ash_Ketchum'); // posts now carry the username
+
+  await assert.rejects(setUsername(db, b, 'Ash_Ketchum'), /already taken/);
+  await assert.rejects(setUsername(db, b, 'ASH_KETCHUM'), /already taken/); // case-insensitive (no impersonation)
+  await assert.rejects(setUsername(db, b, 'ab'), /3-20/);
+  await assert.rejects(setUsername(db, b, 'bad name!'), /letters/);
+});
+
+test('chat: replying carries the parent context and survives a reload; bad parent rejected', async () => {
+  const u = await newUser();
+  const parent = await postChat(db, u, 'parent message');
+  const reply = await postChat(db, u, 'a reply', parent.id);
+  assert.ok(reply.replyTo);
+  assert.equal(reply.replyTo.id, parent.id);
+  assert.equal(reply.replyTo.body, 'parent message');
+  assert.ok(reply.replyTo.handle.length > 0);
+
+  await assert.rejects(postChat(db, u, 'oops', 'does-not-exist'), /no longer exists/);
+
+  const stored = (await listChat(db, 200)).find((m) => m.id === reply.id);
+  assert.equal(stored!.replyTo!.id, parent.id);
 });
 
 after(async () => {

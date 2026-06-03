@@ -114,7 +114,10 @@ export const setReferralCode = (code) => req('/referral/code', { method: 'POST',
 
 // --- global chat ---
 export const getChat = () => req('/chat');
-export const postChat = (body) => req('/chat', { method: 'POST', auth: true, body: { body } });
+export const postChat = (body, replyTo) =>
+  req('/chat', { method: 'POST', auth: true, body: { body, ...(replyTo ? { replyTo } : {}) } });
+export const getProfile = () => req('/me/profile', { auth: true });
+export const setUsername = (username) => req('/me/username', { method: 'POST', auth: true, body: { username } });
 
 // A ?ref=CODE link is captured on first load and held until the user signs in and redeems it.
 const REF_KEY = 'pokeX_ref';

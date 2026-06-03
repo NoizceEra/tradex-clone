@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { formatUsd, formatSignedUsd } from '@pokex/pricing';
+import { formatUsd, formatSignedUsd, shortenPubkey } from '@pokex/pricing';
 import { useAuth } from '../auth/AuthContext';
 import * as api from '../lib/api.js';
 
-const truncate = (pk) => (pk && pk.length > 9 ? `${pk.slice(0, 4)}…${pk.slice(-4)}` : pk || '—');
+const truncate = (pk) => shortenPubkey(pk) || '—';
 
 function Row({ r, mine }) {
   const up = BigInt(r.realizedPnlUusdc) >= 0n;

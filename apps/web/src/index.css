@@ -134,6 +134,43 @@ body {
 .chat-input input:focus { outline: none; border-color: var(--gold); }
 .chat-signin { font-size: 0.5rem; color: var(--text-muted); padding: 0.3rem; }
 
+/* clickable identity: own icon -> edit username, others' icon/name -> tag */
+.chat-avatar, .chat-handle { cursor: pointer; }
+.chat-me-avatar { flex-shrink: 0; align-self: center; }
+
+/* @mentions */
+.chat-mention { color: var(--gold); background: rgba(240, 192, 64, 0.14); padding: 0 0.15rem; border-radius: 3px; }
+.chat-mention.me { color: var(--bg); background: var(--gold); }
+
+/* reply quote shown above a reply's body */
+.chat-quote {
+  font-size: 0.45rem; color: var(--text-muted); border-left: 2px solid var(--accent);
+  padding: 0.1rem 0.4rem; margin: 0.15rem 0; line-height: 1.5;
+}
+.chat-quote b { color: var(--text); }
+.chat-reply-btn { margin-left: auto; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.55rem; padding: 0 0.2rem; }
+.chat-reply-btn:hover { color: var(--gold); }
+
+/* "replying to…" banner above the composer */
+.chat-reply-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  font-size: 0.45rem; color: var(--text-muted); background: var(--bg-3);
+  border-top: 1px solid var(--border); padding: 0.35rem 0.55rem;
+}
+.chat-reply-banner b { color: var(--gold); }
+.chat-reply-banner button { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; line-height: 1; }
+.chat-reply-banner button:hover { color: var(--danger); }
+
+/* username editor (replaces the composer while editing) */
+.chat-name-editor { border-top: 1px solid var(--border); padding: 0.55rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.chat-name-label { font-size: 0.4rem; color: var(--text-muted); letter-spacing: 0.05rem; }
+.chat-name-row { display: flex; gap: 0.4rem; }
+.chat-name-row input {
+  flex: 1; min-width: 0; background: var(--bg-3); border: 1px solid var(--gold); color: var(--text);
+  font-family: 'Press Start 2P', monospace; font-size: 0.5rem; padding: 0.45rem;
+}
+.chat-name-row input:focus { outline: none; box-shadow: 0 0 0 1px var(--gold); }
+
 .main-grid {
   display: grid;
   grid-template-columns: 320px 1fr 280px;

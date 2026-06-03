@@ -191,6 +191,12 @@ export function formatPct(pct, decimals = 2) {
   return `${sign}${pct.toFixed(decimals)}%`;
 }
 
+/** Shorten a Solana pubkey (or any long id) for display: "ABCD…WXYZ". '' for empty. */
+export function shortenPubkey(pk) {
+  if (!pk) return '';
+  return pk.length > 9 ? `${pk.slice(0, 4)}…${pk.slice(-4)}` : pk;
+}
+
 /**
  * Signed USD from a micro-USD bigint (or decimal string): "+$1.23" / "-$5.00".
  * The single home for the +/- abs(value) pattern used across PnL/amount displays.

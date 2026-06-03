@@ -67,13 +67,18 @@ CREATE TABLE IF NOT EXISTS users (
   referral_code TEXT,                          -- this user's own code (assigned on signup)
   referred_by   TEXT REFERENCES users(id),     -- who referred this user (set once on redeem)
   referred_at   TIMESTAMPTZ,
+  display_name  TEXT,                           -- chat username (unique); falls back to a truncated pubkey
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- referral columns added in-place for DBs created before the feature (no-op on a fresh DB)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by TEXT REFERENCES users(id);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_users_referral_code ON users(referral_code);
+-- usernames are unique case-insensitively (no "Ash" vs "ash" impersonation)
+DROP INDEX IF EXISTS uq_users_display_name;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_users_display_name_ci ON users(lower(display_name));
 CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);
 
 -- Codes a user previously held (freed by a rename). Reserved permanently so a renamed-away code
@@ -91,8 +96,10 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   id         TEXT PRIMARY KEY,
   user_id    TEXT NOT NULL REFERENCES users(id),
   body       TEXT NOT NULL,
+  reply_to   TEXT REFERENCES chat_messages(id), -- parent message when this is a reply
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to TEXT REFERENCES chat_messages(id);
 CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS auth_nonces (

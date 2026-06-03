@@ -11,6 +11,7 @@ import {
   syntheticMark,
   toE6,
   formatSignedUsd,
+  shortenPubkey,
 } from './index.js';
 
 const E6 = 1_000_000n;
@@ -75,6 +76,13 @@ test('synthetic mark: anchored at zero skew, bounded by premium cap and max devi
 test('toE6 rounds to micro-units', () => {
   assert.equal(toE6(1.23), 1_230_000n);
   assert.equal(toE6(0), 0n);
+});
+
+test('shortenPubkey truncates long ids and passes through short/empty', () => {
+  assert.equal(shortenPubkey('7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU'), '7xKX…gAsU');
+  assert.equal(shortenPubkey('short'), 'short');
+  assert.equal(shortenPubkey(''), '');
+  assert.equal(shortenPubkey(null), '');
 });
 
 test('formatSignedUsd signs both directions and handles strings/zero', () => {

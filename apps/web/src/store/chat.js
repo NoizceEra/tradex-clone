@@ -32,8 +32,13 @@ export const useChat = create((set, get) => ({
     if (get().unread !== 0) set({ unread: 0 });
   },
 
-  async send(body) {
+  async send(body, replyTo) {
     const b = body.trim();
-    if (b) await api.postChat(b); // the WS echo appends it for everyone, including us
+    if (b) await api.postChat(b, replyTo); // the WS echo appends it for everyone, including us
+  },
+
+  // optimistically relabel a user's already-rendered messages after they change their username
+  relabel(userId, handle) {
+    set((s) => ({ messages: s.messages.map((m) => (m.userId === userId ? { ...m, handle } : m)) }));
   },
 }));

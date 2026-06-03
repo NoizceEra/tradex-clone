@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useChat } from '../store/chat';
+import * as api from '../lib/api.js';
 
 const PALETTE = ['#f0c040', '#3fb950', '#58a6ff', '#e74c3c', '#bc8cff', '#f78166', '#39d3bb'];
 function colorFor(handle) {
   let h = 0;
-  for (let i = 0; i < handle.length; i++) h = (h * 31 + handle.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < (handle || '').length; i++) h = (h * 31 + handle.charCodeAt(i)) >>> 0;
   return PALETTE[h % PALETTE.length];
 }
 function fmtTime(iso) {
@@ -14,38 +15,103 @@ function fmtTime(iso) {
   const p = (n) => String(n).padStart(2, '0');
   return `${p(d.getHours())}:${p(d.getMinutes())}`;
 }
+const snippet = (s) => (s.length > 48 ? `${s.slice(0, 48)}…` : s);
+
+// render @mentions as highlighted chips; a mention of your own username gets a stronger highlight
+function renderBody(body, myName) {
+  return body.split(/(@[A-Za-z0-9_-]+)/g).map((part, i) => {
+    if (/^@[A-Za-z0-9_-]+$/.test(part)) {
+      const me = myName && part.slice(1).toLowerCase() === myName.toLowerCase();
+      return <span key={i} className={`chat-mention ${me ? 'me' : ''}`}>{part}</span>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
 
 export function ChatSidebar({ open, onToggle }) {
   const { user } = useAuth();
   const messages = useChat((s) => s.messages);
   const markRead = useChat((s) => s.markRead);
   const send = useChat((s) => s.send);
+  const relabel = useChat((s) => s.relabel);
+
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [replyTo, setReplyTo] = useState(null); // { id, handle, body } | null
+  const [me, setMe] = useState(null); // { username, handle }
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [nameErr, setNameErr] = useState(null);
+  const [nameBusy, setNameBusy] = useState(false);
   const listRef = useRef(null);
+  const inputRef = useRef(null);
 
-  // while the rail is open, keep unread cleared (incl. for messages arriving live)
+  // load my chat profile (username + handle) when signed in
+  useEffect(() => {
+    if (!user) {
+      setMe(null);
+      return;
+    }
+    let alive = true;
+    api.getProfile().then((p) => alive && setMe(p)).catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [user]);
+
   useEffect(() => {
     if (open) markRead();
   }, [open, messages, markRead]);
 
-  // pin to the latest message
   useEffect(() => {
     const el = listRef.current;
     if (open && el) el.scrollTop = el.scrollHeight;
   }, [messages, open]);
+
+  const tag = (handle) => {
+    if (!/^[A-Za-z0-9_-]+$/.test(handle)) return; // only username handles are taggable (a truncated pubkey isn't)
+    setText((t) => `${t}${t && !t.endsWith(' ') ? ' ' : ''}@${handle} `);
+    inputRef.current?.focus();
+  };
+
+  const openNameEditor = () => {
+    setNameInput(me?.username ?? '');
+    setNameErr(null);
+    setEditingName(true);
+  };
+
+  // clicking your own icon edits your username; clicking someone else's tags them
+  const onIdentity = (m) => (m.userId === user?.id ? openNameEditor() : tag(m.handle));
 
   const onSend = async () => {
     const body = text.trim();
     if (!body || busy) return;
     setBusy(true);
     try {
-      await send(body);
+      await send(body, replyTo?.id);
       setText('');
+      setReplyTo(null);
     } catch {
-      /* keep it simple; surfaced via disabled state */
+      /* keep it simple */
     } finally {
       setBusy(false);
+    }
+  };
+
+  const saveName = async () => {
+    const name = nameInput.trim();
+    if (name.length < 3) return;
+    setNameErr(null);
+    setNameBusy(true);
+    try {
+      const r = await api.setUsername(name);
+      setMe((p) => ({ ...(p || {}), username: r.username, handle: r.username }));
+      if (user) relabel(user.id, r.username);
+      setEditingName(false);
+    } catch (e) {
+      setNameErr(e.message);
+    } finally {
+      setNameBusy(false);
     }
   };
 
@@ -62,38 +128,92 @@ export function ChatSidebar({ open, onToggle }) {
         {messages.length === 0 ? (
           <div className="chat-empty">No messages yet.<br />Say hi 👋</div>
         ) : (
-          messages.map((m) => (
-            <div key={m.id} className="chat-msg">
-              <span className="chat-avatar" style={{ background: colorFor(m.handle) }}>{m.handle[0]?.toUpperCase()}</span>
-              <div className="chat-msg-main">
-                <div className="chat-msg-head">
-                  <span className="chat-handle" style={{ color: colorFor(m.handle) }}>{m.handle}</span>
-                  <span className="chat-time">{fmtTime(m.createdAt)}</span>
+          messages.map((m) => {
+            const mine = m.userId === user?.id;
+            const hColor = colorFor(m.handle);
+            return (
+              <div key={m.id} className="chat-msg">
+                <span
+                  className="chat-avatar"
+                  style={{ background: hColor }}
+                  onClick={() => onIdentity(m)}
+                  title={mine ? 'Edit your username' : `Tag ${m.handle}`}
+                >
+                  {m.handle?.[0]?.toUpperCase()}
+                </span>
+                <div className="chat-msg-main">
+                  <div className="chat-msg-head">
+                    <span className="chat-handle" style={{ color: hColor }} onClick={() => onIdentity(m)}>
+                      {m.handle}
+                    </span>
+                    <span className="chat-time">{fmtTime(m.createdAt)}</span>
+                    {user && (
+                      <button className="chat-reply-btn" title="Reply" onClick={() => setReplyTo({ id: m.id, handle: m.handle, body: m.body })}>↩</button>
+                    )}
+                  </div>
+                  {m.replyTo && (
+                    <div className="chat-quote">↳ <b>{m.replyTo.handle}</b> {snippet(m.replyTo.body)}</div>
+                  )}
+                  <div className="chat-text">{renderBody(m.body, me?.username)}</div>
                 </div>
-                <div className="chat-text">{m.body}</div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
-      <div className="chat-input">
-        {user ? (
-          <>
+      {replyTo && (
+        <div className="chat-reply-banner">
+          <span>↩ Replying to <b>{replyTo.handle}</b>: {snippet(replyTo.body)}</span>
+          <button onClick={() => setReplyTo(null)} title="Cancel reply">×</button>
+        </div>
+      )}
+
+      {user && editingName ? (
+        <div className="chat-name-editor">
+          <span className="chat-name-label">YOUR USERNAME</span>
+          <div className="chat-name-row">
             <input
               type="text"
-              value={text}
-              maxLength={280}
-              placeholder="Message…"
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') onSend(); }}
+              value={nameInput}
+              maxLength={20}
+              placeholder="username"
+              onChange={(e) => setNameInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false); }}
             />
-            <button className="btn-primary sm" disabled={busy || !text.trim()} onClick={onSend}>{busy ? '…' : 'Send'}</button>
-          </>
-        ) : (
-          <div className="chat-signin">Connect &amp; sign in to chat.</div>
-        )}
-      </div>
+            <button className="btn-primary sm" disabled={nameBusy || nameInput.trim().length < 3} onClick={saveName}>{nameBusy ? '…' : 'Save'}</button>
+            <button className="btn-secondary sm" onClick={() => { setEditingName(false); setNameErr(null); }}>Cancel</button>
+          </div>
+          {nameErr && <div className="order-error">{nameErr}</div>}
+        </div>
+      ) : (
+        <div className="chat-input">
+          {user ? (
+            <>
+              <span
+                className="chat-avatar chat-me-avatar"
+                style={{ background: me?.handle ? colorFor(me.handle) : 'var(--border)' }}
+                onClick={openNameEditor}
+                title="Change your username"
+              >
+                {me?.handle?.[0]?.toUpperCase() ?? '?'}
+              </span>
+              <input
+                ref={inputRef}
+                type="text"
+                value={text}
+                maxLength={280}
+                placeholder="Message…  (@ to tag)"
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') onSend(); }}
+              />
+              <button className="btn-primary sm" disabled={busy || !text.trim()} onClick={onSend}>{busy ? '…' : 'Send'}</button>
+            </>
+          ) : (
+            <div className="chat-signin">Connect &amp; sign in to chat.</div>
+          )}
+        </div>
+      )}
     </aside>
   );
 }
