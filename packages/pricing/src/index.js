@@ -190,3 +190,14 @@ export function formatPct(pct, decimals = 2) {
   const sign = pct >= 0 ? '+' : '';
   return `${sign}${pct.toFixed(decimals)}%`;
 }
+
+/**
+ * Signed USD from a micro-USD bigint (or decimal string): "+$1.23" / "-$5.00".
+ * The single home for the +/- abs(value) pattern used across PnL/amount displays.
+ * @param {bigint|string|number} value micro-USD
+ * @param {{ decimals?:number, compact?:boolean }} [opts]
+ */
+export function formatSignedUsd(value, opts = {}) {
+  const v = typeof value === 'bigint' ? value : BigInt(value ?? 0);
+  return (v >= 0n ? '+' : '-') + formatUsd(v < 0n ? -v : v, opts);
+}

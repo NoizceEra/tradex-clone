@@ -50,9 +50,10 @@ export const config = {
   referralBonusUsd: num('REFERRAL_BONUS_USD', 1_000), // play-USDC bonus per redeemed referral (both parties); 0 disables
   maxReferralsPaid: num('MAX_REFERRALS_PAID', 50), // referrer is only paid a bonus for their first N referrals (anti-farming)
 
-  // Trading fees (basis points of notional)
-  openFeeBps: num('OPEN_FEE_BPS', 10), // 0.10%
-  closeFeeBps: num('CLOSE_FEE_BPS', 10), // 0.10%
+  // Trading commission (basis points of notional; 10 bps = 0.10%). Default 0 = no fee for now;
+  // set OPEN_FEE_BPS / CLOSE_FEE_BPS to charge a commission (shown as "Commission" in tx history).
+  openFeeBps: num('OPEN_FEE_BPS', 0),
+  closeFeeBps: num('CLOSE_FEE_BPS', 0),
   feeLpSharePct: num('FEE_LP_SHARE_PCT', 50), // % of fees that go to LPs (rest to platform revenue)
 
   // Funding: per-accrual rate = skewFactor * (skew / openInterest), bps (the heavy side pays)

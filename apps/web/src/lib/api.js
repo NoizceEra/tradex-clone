@@ -95,6 +95,12 @@ export const getMarketDetails = (id) => req(`/markets/${id}/details`);
 export const getBalance = () => req('/account/balance', { auth: true });
 export const faucet = (amountUsd) => req('/faucet', { method: 'POST', auth: true, body: { amountUsd } });
 export const getPositions = () => req('/positions', { auth: true });
+
+// --- account history (trade-panel tabs) ---
+export const getOrderHistory = () => req('/history/orders', { auth: true });
+export const getTradeHistory = () => req('/history/trades', { auth: true });
+export const getTransactionHistory = () => req('/history/transactions', { auth: true });
+export const getPositionHistory = () => req('/history/positions', { auth: true });
 export const openOrder = (body) => req('/orders', { method: 'POST', auth: true, body });
 export const closePosition = (positionId, body) =>
   req(`/positions/${positionId}/close`, { method: 'POST', auth: true, body });

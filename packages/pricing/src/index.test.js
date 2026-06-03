@@ -10,6 +10,7 @@ import {
   liquidationPrice,
   syntheticMark,
   toE6,
+  formatSignedUsd,
 } from './index.js';
 
 const E6 = 1_000_000n;
@@ -74,4 +75,11 @@ test('synthetic mark: anchored at zero skew, bounded by premium cap and max devi
 test('toE6 rounds to micro-units', () => {
   assert.equal(toE6(1.23), 1_230_000n);
   assert.equal(toE6(0), 0n);
+});
+
+test('formatSignedUsd signs both directions and handles strings/zero', () => {
+  assert.equal(formatSignedUsd(1_230_000n), '+$1.23');
+  assert.equal(formatSignedUsd(-5_000_000n), '-$5.00');
+  assert.equal(formatSignedUsd('0'), '+$0.00');
+  assert.equal(formatSignedUsd(null), '+$0.00');
 });

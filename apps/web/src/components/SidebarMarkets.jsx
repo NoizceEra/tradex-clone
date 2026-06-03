@@ -39,9 +39,10 @@ export function SidebarMarkets({ markets, loading, selected, onSelect, collapsed
   const livePrice = (m) => marks[m.id]?.markE6 ?? m.markE6;
   const cards = markets.filter((m) => m.kind === 'card');
   const indices = markets.filter((m) => m.kind === 'index');
-  const list = (tab === 'indices' ? indices : tab === 'cards' ? cards : []).filter((m) =>
-    m.displayName.toLowerCase().includes(search.toLowerCase()),
-  );
+  const list = (tab === 'indices' ? indices : tab === 'cards' ? cards : [])
+    .filter((m) => m.displayName.toLowerCase().includes(search.toLowerCase()))
+    // tradeable markets first, so the gated "Soon" indices sink below the live ones (stable otherwise)
+    .sort((a, b) => Number(b.tradeable) - Number(a.tradeable));
 
   return (
     <div className={`sidebar ${collapsed ? 'collapsed' : ''}`}>

@@ -323,10 +323,11 @@ body {
   flex: 1;
   min-height: 0;
   width: 100%;
+  overflow: hidden; /* clip the canvas so it can never bleed over the bottom panel */
 }
 
 .bottom-panel {
-  height: 160px;
+  height: 210px;
   border-top: 2px solid var(--border);
   background: var(--bg-2);
   display: flex;
@@ -355,7 +356,34 @@ body {
 .bottom-tab-btn:hover { color: var(--text); background: var(--bg-3); }
 .bottom-tab-btn.active { color: var(--gold); }
 
-.bottom-content { flex: 1; overflow-y: auto; padding: 0 0.5rem; }
+/* vertical padding so content doesn't crowd / overlap the tab bar above it */
+.bottom-content { flex: 1; overflow: auto; padding: 0.65rem 0.85rem; }
+
+/* Open / History toggle inside the Positions tab */
+.sub-tabs { display: flex; gap: 0.4rem; margin-bottom: 0.55rem; }
+.sub-tab-btn {
+  background: var(--bg-3); border: 1px solid var(--border); color: var(--text-muted);
+  font-family: 'Press Start 2P', monospace; font-size: 0.4rem; padding: 0.3rem 0.6rem; cursor: pointer;
+}
+.sub-tab-btn:hover { color: var(--text); }
+.sub-tab-btn.active { color: var(--gold); border-color: var(--gold); }
+
+/* account-history tables (orders / trades / transactions / position history) */
+.hist-table { width: 100%; border-collapse: collapse; font-size: 0.45rem; }
+.hist-table th {
+  text-align: left; font-weight: normal; color: var(--text-muted); letter-spacing: 0.03rem;
+  padding: 0.3rem 0.55rem; white-space: nowrap; border-bottom: 1px solid var(--border);
+  position: sticky; top: -0.65rem; background: var(--bg-2);
+}
+.hist-table td { padding: 0.32rem 0.55rem; color: var(--text); white-space: nowrap; border-bottom: 1px solid rgba(255, 255, 255, 0.03); }
+.hist-table td.muted { color: var(--text-muted); }
+.muted { color: var(--text-muted); }
+/* state message (signed-out / loading / empty) shown in the table body, headers stay visible */
+.hist-empty { text-align: center; color: var(--text-muted); padding: 1.4rem 0.5rem; }
+.hist-empty.down { color: var(--danger); }
+
+/* compact buttons inside dense tables (e.g. position Close) */
+.btn-ghost.sm, .btn-primary.sm, .btn-secondary.sm { font-size: 0.4rem; padding: 0.3rem 0.5rem; border-width: 1px; }
 
 .activity-table {
   width: 100%;

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, AreaSeries } from 'lightweight-charts';
 import { formatUsd, formatPct } from '@pokex/pricing';
 import { useRealtime } from '../store/realtime';
+import { BottomPanel } from './BottomPanel';
 import * as api from '../lib/api.js';
 
 const TIMEFRAMES = ['1D', '1W', '1M', '3M', '1Y'];
@@ -43,10 +44,15 @@ export function TradingView({ market }) {
     });
     chartRef.current = chart;
     seriesRef.current = series;
-    const onResize = () => elRef.current && chart.applyOptions({ width: elRef.current.clientWidth, height: elRef.current.clientHeight });
-    window.addEventListener('resize', onResize);
+    // Track the CONTAINER's size, not just the window — otherwise the canvas keeps its initial
+    // height when the layout changes (e.g. the bottom panel resizing) and overflows over it.
+    const fit = () => elRef.current && chart.applyOptions({ width: elRef.current.clientWidth, height: elRef.current.clientHeight });
+    const ro = new ResizeObserver(fit);
+    ro.observe(elRef.current);
+    window.addEventListener('resize', fit);
     return () => {
-      window.removeEventListener('resize', onResize);
+      ro.disconnect();
+      window.removeEventListener('resize', fit);
       chart.remove();
     };
   }, []);
@@ -87,10 +93,7 @@ export function TradingView({ market }) {
   }, [liveMark, market?.id]);
 
   const o = market ? oi[market.id] : null;
-  const longU = o ? Number(o.longUusdc) / 1e6 : 0;
-  const shortU = o ? Number(o.shortUusdc) / 1e6 : 0;
-  const totalOi = longU + shortU;
-  const longPct = totalOi > 0 ? (longU / totalOi) * 100 : 50;
+  const totalOi = o ? (Number(o.longUusdc) + Number(o.shortUusdc)) / 1e6 : 0;
 
   // NOTE: the chart container must always be mounted so the init effect (run once) can
   // attach the chart; we guard a null market inline rather than early-returning.
@@ -140,22 +143,7 @@ export function TradingView({ market }) {
 
       <div className="chart-container" ref={elRef} />
 
-      <div className="bottom-panel">
-        <div className="bottom-tabs">
-          <span className="bottom-tab-btn active">Open Interest</span>
-        </div>
-        <div className="bottom-content">
-          <div className="oi-row">
-            <span className="up">▲ Long {formatUsd(longU, { compact: true })}</span>
-            <span className="down">Short {formatUsd(shortU, { compact: true })} ▼</span>
-          </div>
-          <div className="oi-bar">
-            <div className="oi-bar-long" style={{ width: `${longPct}%` }} />
-            <div className="oi-bar-short" style={{ width: `${100 - longPct}%` }} />
-          </div>
-          <div className="oi-hint">Mark = index {market?.kind === 'index' ? '(basket NAV)' : ''} ± a bounded skew premium from open interest.</div>
-        </div>
-      </div>
+      <BottomPanel market={market} />
     </div>
   );
 }

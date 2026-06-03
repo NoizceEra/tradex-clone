@@ -1,18 +1,12 @@
 import { useState, useEffect } from 'react';
-import { formatUsd } from '@pokex/pricing';
+import { formatUsd, formatSignedUsd } from '@pokex/pricing';
 import { useAuth } from '../auth/AuthContext';
 import * as api from '../lib/api.js';
 
 const truncate = (pk) => (pk && pk.length > 9 ? `${pk.slice(0, 4)}…${pk.slice(-4)}` : pk || '—');
 
-function signedUsd(microStr) {
-  const v = BigInt(microStr);
-  const up = v >= 0n;
-  return { up, text: `${up ? '+' : '-'}${formatUsd(v < 0n ? -v : v)}` };
-}
-
 function Row({ r, mine }) {
-  const pnl = signedUsd(r.realizedPnlUusdc);
+  const up = BigInt(r.realizedPnlUusdc) >= 0n;
   return (
     <div className={`lb-row ${mine ? 'lb-you' : ''}`}>
       <span className="lb-rank">{r.rank <= 3 ? ['🥇', '🥈', '🥉'][r.rank - 1] : r.rank}</span>
@@ -20,7 +14,7 @@ function Row({ r, mine }) {
         {truncate(r.pubkey)}
         {mine && <span className="lb-you-tag">YOU</span>}
       </span>
-      <span className={`lb-pnl ${pnl.up ? 'up' : 'down'}`}>{pnl.text}</span>
+      <span className={`lb-pnl ${up ? 'up' : 'down'}`}>{formatSignedUsd(r.realizedPnlUusdc)}</span>
       <span className="lb-equity">{formatUsd(BigInt(r.equityUusdc))}</span>
       <span className="lb-volume">{formatUsd(BigInt(r.volumeUusdc), { compact: true })}</span>
     </div>

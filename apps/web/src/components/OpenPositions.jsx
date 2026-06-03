@@ -1,13 +1,10 @@
 import { useState } from 'react';
-import { formatUsd } from '@pokex/pricing';
+import { formatUsd, formatSignedUsd } from '@pokex/pricing';
 import * as api from '../lib/api.js';
 
-export function OpenPositions({ positions, onChanged, onSelect }) {
+export function OpenPositions({ positions, onChanged, onSelect, emptyLabel = 'No open positions.' }) {
   const [busy, setBusy] = useState(null);
-
-  if (!positions || positions.length === 0) {
-    return <div className="empty-state">No open positions.</div>;
-  }
+  const rows = positions ?? [];
 
   const close = async (p) => {
     setBusy(p.id);
@@ -36,22 +33,22 @@ export function OpenPositions({ positions, onChanged, onSelect }) {
         </tr>
       </thead>
       <tbody>
-        {positions.map((p) => {
-          const up = BigInt(p.unrealizedPnlUusdc) >= 0n;
+        {rows.length === 0 && (
+          <tr><td colSpan={8} className="hist-empty">{emptyLabel}</td></tr>
+        )}
+        {rows.map((p) => {
+          const up = BigInt(p.unrealizedPnlUusdc ?? '0') >= 0n;
           return (
             <tr key={p.id}>
               <td className="link" onClick={() => onSelect?.(p.marketId)}>{p.symbol}</td>
               <td className={p.side === 'long' ? 'up' : 'down'}>
-                {p.side.toUpperCase()} {p.leverage}x
+                {(p.side ?? '').toUpperCase()} {p.leverage}x
               </td>
               <td>{(Number(p.qtyE6) / 1e6).toFixed(2)}</td>
-              <td>{formatUsd(BigInt(p.avgEntryE6))}</td>
-              <td>{formatUsd(BigInt(p.markE6))}</td>
-              <td className="down">{formatUsd(BigInt(p.liqPriceE6))}</td>
-              <td className={up ? 'up' : 'down'}>
-                {up ? '+' : ''}
-                {formatUsd(BigInt(p.unrealizedPnlUusdc))}
-              </td>
+              <td>{formatUsd(BigInt(p.avgEntryE6 ?? '0'))}</td>
+              <td>{formatUsd(BigInt(p.markE6 ?? '0'))}</td>
+              <td className="down">{formatUsd(BigInt(p.liqPriceE6 ?? '0'))}</td>
+              <td className={up ? 'up' : 'down'}>{formatSignedUsd(p.unrealizedPnlUusdc ?? '0')}</td>
               <td>
                 <button className="btn-ghost sm" disabled={busy === p.id} onClick={() => close(p)}>
                   {busy === p.id ? '…' : 'Close'}

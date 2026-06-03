@@ -148,7 +148,7 @@ export function OrderEntry({ market, onTraded }) {
 
         <div className="form-field">
           <label className="field-label">
-            <span>MARGIN (USDC)</span>
+            <span>SIZE (USDC)</span>
             <span className="field-hint">Avail: ${availableUsd.toFixed(2)}</span>
           </label>
           <div className="field-input-wrap">
