@@ -562,9 +562,14 @@ body {
   border: 2px solid var(--border);
   max-width: 90vw;
   max-height: 90vh;
-  overflow: auto;
+  overflow: hidden;
   box-shadow: 0 0 20px rgba(0,0,0,0.6);
 }
+/* click-to-enlarge card modal contents (rem-based so it fits within the panel on every skin) */
+.modal-img { max-width: calc(90vw - 3.5rem); max-height: calc(90vh - 9.5rem); display: block; margin: 0 auto; }
+.modal-title { margin: 0.7rem 0 0.25rem; font-size: 0.7rem; color: var(--text); font-family: var(--font-display); }
+.modal-sub { margin: 0; font-size: 0.5rem; color: var(--text-muted); }
+.modal-sub.val { margin: 0.25rem 0 0.7rem; color: var(--text); }
 
 .preview-img {
   max-height: 250px; /* enlarged */

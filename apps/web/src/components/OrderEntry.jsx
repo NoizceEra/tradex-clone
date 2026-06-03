@@ -20,12 +20,14 @@ export function OrderEntry({ market, onTraded }) {
   const [err, setErr] = useState(null);
   const [details, setDetails] = useState(null);
   const [showMore, setShowMore] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     if (!market?.id) return;
     let alive = true;
     setDetails(null); // hide the prior market's panel during the new round-trip
     setShowMore(false); // collapse so stale expanded details can't render under the new card
+    setModalOpen(false); // close the enlarged-image modal when switching markets
     api.getMarketDetails(market.id).then((d) => alive && setDetails(d)).catch(() => alive && setDetails(null));
     return () => {
       alive = false;
@@ -76,6 +78,7 @@ export function OrderEntry({ market, onTraded }) {
     : 0n;
   const feeUusdc = fee(notional(qtyE6, markE6 ? BigInt(markE6) : 0n), OPEN_FEE_BPS);
   const availableUsd = balance ? Number(balance.availableUusdc) / 1e6 : 0;
+  const largeImg = details?.imageLarge || market.imageSmall; // big card art for the click-to-enlarge modal
 
   const canTrade = user && market.tradeable && market.status === 'active' && qtyE6 >= minQty && marginNum > 0;
 
@@ -96,7 +99,12 @@ export function OrderEntry({ market, onTraded }) {
 
   return (
     <div className="order-panel">
-      <div className="card-preview">
+      <div
+        className="card-preview"
+        onClick={() => largeImg && setModalOpen(true)}
+        style={{ cursor: largeImg ? 'zoom-in' : 'default' }}
+        title={largeImg ? 'Click to enlarge' : undefined}
+      >
         {market.imageSmall ? (
           <img src={market.imageSmall} alt={market.displayName} className="preview-img" />
         ) : (
@@ -104,6 +112,21 @@ export function OrderEntry({ market, onTraded }) {
         )}
         <div className="preview-label">{market.displayName}</div>
       </div>
+
+      {modalOpen && largeImg && (
+        <div className="modal" onClick={() => setModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <img src={largeImg} alt={market.displayName} className="modal-img" />
+            <h3 className="modal-title">{market.displayName}</h3>
+            <p className="modal-sub">{details?.metadata?.setName ? `Set: ${details.metadata.setName}` : market.symbol}</p>
+            <p className="modal-sub val">
+              Mark: {priceUsd ? formatUsd(priceUsd) : '—'}
+              {details?.gradedPsa10E6 ? ` · PSA-10 ${formatUsd(BigInt(details.gradedPsa10E6))}` : ''}
+            </p>
+            <button className="btn-secondary sm" onClick={() => setModalOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
 
       {details && (details.gradedPsa10E6 || details.metadata) && (
         <div className="details-panel">
