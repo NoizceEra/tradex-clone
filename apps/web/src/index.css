@@ -75,7 +75,64 @@ body {
 }
 
 /* ─── LAYOUT ─────────────────────────────────── */
-.app-container { display: flex; flex-direction: column; min-height: 100vh; }
+.app-container { display: flex; flex-direction: column; min-height: 100vh; transition: padding-left 0.22s ease; }
+/* when the chat rail is open, shift everything (navbar + content) right to make room for it */
+.app-container.chat-open { padding-left: 280px; }
+
+/* ---- global collapsible chat rail ---- */
+.chat-sidebar {
+  position: fixed; top: 0; left: 0; bottom: 0; width: 280px; z-index: 120;
+  display: flex; flex-direction: column;
+  background: var(--bg-2); border-right: 2px solid var(--accent);
+}
+.chat-header {
+  height: 64px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 0.9rem; border-bottom: 3px solid var(--accent); background: var(--bg-3);
+}
+.chat-title { font-size: 0.6rem; color: var(--gold); }
+.chat-collapse {
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  font-family: 'Press Start 2P', monospace; font-size: 0.6rem;
+}
+.chat-collapse:hover { color: var(--gold); }
+
+/* brand + chat toggle as a left cluster, with comfortable breathing room between them */
+.nav-left { display: flex; align-items: center; gap: 2.5rem; }
+
+/* navbar "Chat" toggle — the always-visible open/close control + unread badge */
+.chat-toggle {
+  display: inline-flex; align-items: center; gap: 0.35rem; position: relative;
+  background: var(--bg-3); border: 1px solid var(--border); color: var(--text-muted);
+  font-family: 'Press Start 2P', monospace; font-size: 0.5rem; padding: 0.5rem 0.7rem; cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.chat-toggle:hover { color: var(--text); border-color: var(--gold); }
+.chat-toggle.active { color: var(--gold); border-color: var(--gold); background: rgba(240, 192, 64, 0.08); }
+.chat-badge {
+  background: var(--accent); color: #fff; font-size: 0.4rem; line-height: 1;
+  padding: 0.15rem 0.3rem; border-radius: 8px; min-width: 0.8rem; text-align: center;
+}
+
+.chat-messages { flex: 1; overflow-y: auto; padding: 0.6rem 0.7rem; display: flex; flex-direction: column; gap: 0.7rem; }
+.chat-empty { color: var(--text-muted); font-size: 0.5rem; line-height: 1.7; text-align: center; margin-top: 1.5rem; }
+.chat-msg { display: flex; gap: 0.5rem; align-items: flex-start; }
+.chat-avatar {
+  flex-shrink: 0; width: 20px; height: 20px; border-radius: 4px; color: #0d1117;
+  display: flex; align-items: center; justify-content: center; font-size: 0.45rem;
+}
+.chat-msg-main { min-width: 0; }
+.chat-msg-head { display: flex; align-items: baseline; gap: 0.4rem; }
+.chat-handle { font-size: 0.45rem; }
+.chat-time { font-size: 0.4rem; color: var(--text-muted); }
+.chat-text { font-size: 0.5rem; color: var(--text); line-height: 1.6; word-break: break-word; margin-top: 0.15rem; }
+
+.chat-input { flex-shrink: 0; border-top: 1px solid var(--border); padding: 0.55rem; display: flex; gap: 0.4rem; }
+.chat-input input {
+  flex: 1; min-width: 0; background: var(--bg-3); border: 1px solid var(--border); color: var(--text);
+  font-family: 'Press Start 2P', monospace; font-size: 0.5rem; padding: 0.45rem;
+}
+.chat-input input:focus { outline: none; border-color: var(--gold); }
+.chat-signin { font-size: 0.5rem; color: var(--text-muted); padding: 0.3rem; }
 
 .main-grid {
   display: grid;

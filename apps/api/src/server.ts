@@ -9,6 +9,7 @@ import { orderRoutes } from './routes/orders.ts';
 import { lpRoutes } from './routes/lp.ts';
 import { socialRoutes } from './routes/social.ts';
 import { historyRoutes } from './routes/history.ts';
+import { chatRoutes } from './routes/chat.ts';
 import { registerWs } from './plugins/ws.ts';
 
 /**
@@ -57,6 +58,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(lpRoutes);
   await app.register(socialRoutes);
   await app.register(historyRoutes);
+  await app.register(chatRoutes);
 
   return app;
 }

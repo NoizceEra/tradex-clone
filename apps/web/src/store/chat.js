@@ -1,0 +1,39 @@
+import { create } from 'zustand';
+import { ensureConnected, subscribe, onMessage } from '../lib/ws.js';
+import * as api from '../lib/api.js';
+
+/**
+ * Global chat store, shared by the chat rail (renders messages) and the navbar toggle (shows the
+ * unread badge). Subscribes once for the app's lifetime; `unread` accrues on new messages and is
+ * cleared by markRead() whenever the rail is open.
+ */
+export const useChat = create((set, get) => ({
+  messages: [],
+  unread: 0,
+  _started: false,
+
+  start() {
+    if (get()._started) return;
+    set({ _started: true });
+    ensureConnected();
+    subscribe(['chat']);
+    api.getChat().then((r) => set({ messages: r.messages })).catch(() => {});
+    onMessage((m) => {
+      if (m.ch !== 'chat' || m.type !== 'message' || !m.data) return;
+      set((s) =>
+        s.messages.some((x) => x.id === m.data.id)
+          ? s
+          : { messages: [...s.messages.slice(-199), m.data], unread: s.unread + 1 },
+      );
+    });
+  },
+
+  markRead() {
+    if (get().unread !== 0) set({ unread: 0 });
+  },
+
+  async send(body) {
+    const b = body.trim();
+    if (b) await api.postChat(b); // the WS echo appends it for everyone, including us
+  },
+}));

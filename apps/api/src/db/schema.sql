@@ -86,6 +86,15 @@ CREATE TABLE IF NOT EXISTS referral_code_aliases (
 );
 CREATE INDEX IF NOT EXISTS idx_referral_alias_user ON referral_code_aliases(user_id);
 
+-- Global community chat (a single public room for the MVP).
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id),
+  body       TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(created_at DESC);
+
 CREATE TABLE IF NOT EXISTS auth_nonces (
   nonce      TEXT PRIMARY KEY,
   pubkey     TEXT NOT NULL,

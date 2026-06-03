@@ -105,6 +105,10 @@ export const ReferralCodeRequest = z.object({
   code: z.string().trim().min(4).max(20), // server normalizes + validates charset
 });
 
+export const ChatPostRequest = z.object({
+  body: z.string().trim().min(1).max(280),
+});
+
 // --- auth (SIWS) -------------------------------------------------------------
 
 export const NonceRequest = z.object({ pubkey: z.string().min(32) });

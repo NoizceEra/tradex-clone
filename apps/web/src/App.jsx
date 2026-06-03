@@ -7,8 +7,10 @@ import { Marketplace } from './components/Marketplace';
 import { Portfolio } from './components/Portfolio';
 import { PoolView } from './components/PoolView';
 import { Leaderboard } from './components/Leaderboard';
+import { ChatSidebar } from './components/ChatSidebar';
 import { Toasts } from './components/Toasts';
 import { useRealtime } from './store/realtime';
+import { useChat } from './store/chat';
 import * as api from './lib/api.js';
 
 api.capturePendingReferral(); // stash any ?ref=CODE before the URL changes
@@ -19,11 +21,21 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState('trade');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [chatOpen, setChatOpen] = useState(() => localStorage.getItem('pokeX_chat_open') !== '0');
   const startRealtime = useRealtime((s) => s.start);
+  const startChat = useChat((s) => s.start);
+
+  const toggleChat = () =>
+    setChatOpen((o) => {
+      const next = !o;
+      localStorage.setItem('pokeX_chat_open', next ? '1' : '0');
+      return next;
+    });
 
   useEffect(() => {
     startRealtime();
-  }, [startRealtime]);
+    startChat();
+  }, [startRealtime, startChat]);
 
   const loadMarkets = useCallback(async () => {
     try {
@@ -51,8 +63,9 @@ function App() {
   };
 
   return (
-    <div className="app-container">
-      <Navbar activeView={activeView} setActiveView={setActiveView} />
+    <div className={`app-container ${chatOpen ? 'chat-open' : ''}`}>
+      <ChatSidebar open={chatOpen} onToggle={toggleChat} />
+      <Navbar activeView={activeView} setActiveView={setActiveView} chatOpen={chatOpen} onToggleChat={toggleChat} />
 
       {activeView === 'trade' && (
         <div className={`main-grid ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
