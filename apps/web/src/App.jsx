@@ -63,7 +63,9 @@ function App() {
   };
 
   return (
-    <div className={`app-container ${chatOpen ? 'chat-open' : ''}`}>
+    <>
+      <div className="skin-cardback" aria-hidden="true"><span className="skin-emblem" /></div>
+      <div className={`app-container ${chatOpen ? 'chat-open' : ''}`}>
       <ChatSidebar open={chatOpen} onToggle={toggleChat} />
       <Navbar activeView={activeView} setActiveView={setActiveView} chatOpen={chatOpen} onToggleChat={toggleChat} />
 
@@ -88,7 +90,8 @@ function App() {
       {activeView === 'leaderboard' && <Leaderboard />}
 
       <Toasts />
-    </div>
+      </div>
+    </>
   );
 }
 

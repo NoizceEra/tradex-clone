@@ -2,6 +2,11 @@ import React, { useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
+import './themes.css';
+import { initialSkin } from './store/theme';
+
+// Apply the saved skin before first paint so there's no retro→skin flash.
+document.documentElement.setAttribute('data-theme', initialSkin());
 
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';

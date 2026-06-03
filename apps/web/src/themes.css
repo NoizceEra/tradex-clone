@@ -1,0 +1,137 @@
+/* ===========================================================================
+ * PokeX skins — selectable theme system.
+ * `data-theme` lives on <html> (set in main.jsx + theme store). Each skin
+ * overrides the existing colour tokens (so the whole app reskins) plus two font
+ * roles (--font-base for body/controls, --font-display for headings) and the
+ * card-back opacity. Loaded AFTER index.css so [data-theme] wins over :root.
+ *
+ * The default (arcade / Retro) lives in index.css :root — these are the 6 others.
+ * Card-back motifs are ORIGINAL CSS homages (Poké-Ball / compass / medallion /
+ * swirl / mandala), never official artwork.
+ * ======================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Cinzel:wght@600;700&family=EB+Garamond:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Spectral:wght@400;500;600&display=swap');
+
+/* ---- Pokémon · Indigo (navy-blue, Baloo) ---- */
+[data-theme="indigo"] {
+  --bg:#0a1430; --bg-2:#13245b; --bg-3:#16285f; --border:#27407f; --text:#f3f7ff; --text-muted:#9db0dd;
+  --gold:#ffcb05; --accent:#3b6fd4; --accent-lit:#5a8be0; --success:#37d17a; --danger:#ff5d5d;
+  --font-base:'Baloo 2',sans-serif; --font-display:'Baloo 2',sans-serif; --cb-opacity:.16;
+}
+/* ---- Pokémon · Voltage (near-black, Baloo + Plex) ---- */
+[data-theme="voltage"] {
+  --bg:#0B0D12; --bg-2:#13161F; --bg-3:#1B1F2B; --border:#2A2F3D; --text:#EEF1F6; --text-muted:#8A91A3;
+  --gold:#FFCB05; --accent:#3D7DCA; --accent-lit:#5a8be0; --success:#3BE0A0; --danger:#FF5470;
+  --font-base:'IBM Plex Sans',sans-serif; --font-display:'Baloo 2',sans-serif; --cb-opacity:.07;
+}
+/* ---- One Piece · Bounty (black-maroon, Bebas + Barlow) ---- */
+[data-theme="bounty"] {
+  --bg:#140a0c; --bg-2:#231215; --bg-3:#2a161a; --border:#43242a; --text:#f6e9cf; --text-muted:#c2a48f;
+  --gold:#f4b41a; --accent:#e23b34; --accent-lit:#e85a52; --success:#4fd17a; --danger:#ff5d52;
+  --font-base:'Barlow',sans-serif; --font-display:'Bebas Neue',sans-serif; --cb-opacity:.14;
+}
+/* ---- One Piece · Grand Line (ocean-navy, Bebas + Barlow) ---- */
+[data-theme="grandline"] {
+  --bg:#0A1622; --bg-2:#102234; --bg-3:#16304A; --border:#244563; --text:#F3F1EA; --text-muted:#8AA0B4;
+  --gold:#E0A82E; --accent:#C8453B; --accent-lit:#d65b51; --success:#4FB477; --danger:#D9544D;
+  --font-base:'Barlow',sans-serif; --font-display:'Bebas Neue',sans-serif; --cb-opacity:.06;
+}
+/* ---- Magic · Antiquity (obsidian-brown, Cinzel + Spectral) ---- */
+[data-theme="antiquity"] {
+  --bg:#120e09; --bg-2:#1d1812; --bg-3:#251e15; --border:#352a1c; --text:#ece3d0; --text-muted:#a8997f;
+  --gold:#c8aa6e; --accent:#8a6cff; --accent-lit:#a084ff; --success:#5bbf86; --danger:#d4574e;
+  --font-base:'Spectral',serif; --font-display:'Cinzel',serif; --cb-opacity:.14;
+}
+/* ---- Magic · Mythic (obsidian-violet, Cinzel + EB Garamond) ---- */
+[data-theme="mythic"] {
+  --bg:#0C0A0F; --bg-2:#16131C; --bg-3:#201B29; --border:#352C42; --text:#ECE6F0; --text-muted:#9489A0;
+  --gold:#C9A227; --accent:#7A4FB5; --accent-lit:#9a72d8; --success:#46C99A; --danger:#E0484D;
+  --font-base:'EB Garamond',serif; --font-display:'Cinzel',serif; --cb-opacity:.06;
+}
+
+/* Non-retro skins use smooth rendering (retro keeps pixelated/aliased from index.css). */
+[data-theme="indigo"] body, [data-theme="voltage"] body, [data-theme="bounty"] body,
+[data-theme="grandline"] body, [data-theme="antiquity"] body, [data-theme="mythic"] body {
+  image-rendering: auto; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+}
+/* retro thumbnails stay crisp; other skins render images smoothly */
+[data-theme="indigo"] img, [data-theme="voltage"] img, [data-theme="bounty"] img,
+[data-theme="grandline"] img, [data-theme="antiquity"] img, [data-theme="mythic"] img {
+  image-rendering: auto;
+}
+
+/* headings adopt the skin's display font (retro: same pixel font, no change) */
+.nav-brand, .card-header-name, .preview-label, .page h2, .page h3 { font-family: var(--font-display); }
+
+/* =================== card-back background layer =================== */
+.app-container { position: relative; z-index: 1; }   /* sit above the card-back */
+.skin-cardback {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  opacity: var(--cb-opacity, .07); overflow: hidden;
+}
+.skin-emblem {
+  position: absolute; left: 62%; top: 50%; width: 440px; height: 440px;
+  transform: translate(-50%,-50%); border-radius: 50%; overflow: hidden;
+}
+/* retro: faint pixel grid, no emblem */
+[data-theme="arcade"] .skin-cardback, :root .skin-cardback {
+  opacity: .4;
+  background-image: linear-gradient(rgba(240,192,64,.05) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(240,192,64,.05) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+[data-theme="indigo"] .skin-cardback, [data-theme="voltage"] .skin-cardback,
+[data-theme="bounty"] .skin-cardback, [data-theme="grandline"] .skin-cardback,
+[data-theme="antiquity"] .skin-cardback, [data-theme="mythic"] .skin-cardback { background-image: none; }
+/* Poké-Ball geometry (Indigo gold, Voltage blue) */
+[data-theme="indigo"] .skin-emblem { border:14px solid var(--gold);
+  background:radial-gradient(circle,var(--bg) 0 34px,var(--gold) 34px 48px,transparent 48px) center/100% 100% no-repeat; }
+[data-theme="indigo"] .skin-emblem::before { content:""; position:absolute; left:-14px; right:-14px; top:calc(50% - 9px); height:18px; background:var(--gold); }
+[data-theme="voltage"] .skin-emblem { border:14px solid var(--accent);
+  background:radial-gradient(circle,var(--bg) 0 34px,var(--accent) 34px 48px,transparent 48px) center/100% 100% no-repeat; }
+[data-theme="voltage"] .skin-emblem::before { content:""; position:absolute; left:-14px; right:-14px; top:calc(50% - 9px); height:18px; background:var(--accent); }
+/* One Piece · Bounty — Straw-Hat medallion (concentric rings) */
+[data-theme="bounty"] .skin-emblem { border:11px solid var(--gold);
+  background:radial-gradient(circle,transparent 0 96px,var(--accent) 96px 108px,transparent 108px) center/100% 100% no-repeat; }
+[data-theme="bounty"] .skin-emblem::after { content:""; position:absolute; inset:40px; border-radius:50%; border:7px solid var(--accent); }
+/* One Piece · Grand Line — 16-point compass rose */
+[data-theme="grandline"] .skin-emblem { border:3px solid var(--gold);
+  background:repeating-conic-gradient(var(--gold) 0 1.5deg, transparent 1.5deg 22.5deg); }
+[data-theme="grandline"] .skin-emblem::after { content:""; position:absolute; inset:110px; border-radius:50%; border:3px solid var(--gold); background:var(--bg); }
+/* Magic · Antiquity — Deckmaster swirl (quarter conic) */
+[data-theme="antiquity"] .skin-emblem { border:9px solid var(--gold);
+  background:conic-gradient(var(--gold) 0 25%, transparent 0 50%, var(--gold) 0 75%, transparent 0); }
+[data-theme="antiquity"] .skin-emblem::after { content:""; position:absolute; inset:70px; border-radius:50%; border:7px solid var(--gold); background:var(--bg); }
+/* Magic · Mythic — arcane mandala (fine sunburst) + violet bleed */
+[data-theme="mythic"] .skin-emblem { border:3px solid var(--gold);
+  background:repeating-conic-gradient(var(--gold) 0 .8deg, transparent .8deg 7.5deg); }
+[data-theme="mythic"] .skin-emblem::after { content:""; position:absolute; inset:88px; border-radius:50%; border:2px solid var(--gold); background:var(--bg); }
+[data-theme="mythic"] .skin-cardback { background:radial-gradient(circle at 78% 22%, rgba(122,79,181,.10), transparent 60%); }
+
+/* =================== theme picker (navbar chip + drawer) =================== */
+.nav-actions { display: flex; align-items: center; gap: 0.6rem; }
+.theme-trigger {
+  display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border);
+  background:var(--bg-3); color:var(--text); font-family:var(--font-base); font-size:0.5rem;
+  padding:0.45rem 0.6rem; cursor:pointer; border-radius:5px; white-space:nowrap;
+}
+.theme-trigger:hover { border-color:var(--gold); }
+.theme-sw { width:14px; height:14px; border-radius:4px; display:inline-block; flex-shrink:0; }
+.theme-scrim { position:fixed; inset:0; z-index:140; background:rgba(0,0,0,.4); }
+.theme-drawer {
+  position:fixed; top:56px; right:12px; z-index:141; width:330px; max-width:92vw;
+  background:var(--bg-2); border:1px solid var(--border); border-radius:8px;
+  box-shadow:0 16px 44px rgba(0,0,0,.55); padding:12px;
+}
+.theme-drawer-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;
+  font-family:var(--font-base); font-size:0.55rem; color:var(--text); }
+.theme-drawer-head button { background:none; border:0; color:var(--text-muted); cursor:pointer; font-size:0.75rem; line-height:1; }
+.theme-cards { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.theme-card {
+  display:flex; align-items:center; gap:8px; border:1px solid var(--border); background:var(--bg-3);
+  color:var(--text); font-family:var(--font-base); font-size:0.5rem; padding:8px; cursor:pointer;
+  border-radius:6px; text-align:left; position:relative; line-height:1.4;
+}
+.theme-card:hover { border-color:var(--gold); }
+.theme-card.on { border-color:var(--gold); box-shadow:0 0 0 1px var(--gold); }
+.theme-card-sw { width:24px; height:24px; border-radius:5px; flex-shrink:0; }
+.theme-card-check { position:absolute; top:4px; right:5px; color:var(--gold); font-size:0.6rem; }

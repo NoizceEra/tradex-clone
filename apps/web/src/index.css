@@ -13,13 +13,17 @@
   --success:     #3fb950;
   --danger:      #f85149;
   --gold:        #f0c040;
+  /* skin tokens — defaults = Retro/Arcade; overridden per-skin in themes.css */
+  --font-base:    'Press Start 2P', monospace;
+  --font-display: 'Press Start 2P', monospace;
+  --cb-opacity:   .4;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-base);
   background-color: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: none;
@@ -58,7 +62,7 @@ body {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-base);
   font-size: 0.65rem;
   cursor: pointer;
   padding: 0.5rem 0.75rem;
@@ -92,7 +96,7 @@ body {
 .chat-title { font-size: 0.6rem; color: var(--gold); }
 .chat-collapse {
   background: none; border: none; color: var(--text-muted); cursor: pointer;
-  font-family: 'Press Start 2P', monospace; font-size: 0.6rem;
+  font-family: var(--font-base); font-size: 0.6rem;
 }
 .chat-collapse:hover { color: var(--gold); }
 
@@ -103,7 +107,7 @@ body {
 .chat-toggle {
   display: inline-flex; align-items: center; gap: 0.35rem; position: relative;
   background: var(--bg-3); border: 1px solid var(--border); color: var(--text-muted);
-  font-family: 'Press Start 2P', monospace; font-size: 0.5rem; padding: 0.5rem 0.7rem; cursor: pointer;
+  font-family: var(--font-base); font-size: 0.5rem; padding: 0.5rem 0.7rem; cursor: pointer;
   transition: color 0.12s, border-color 0.12s, background 0.12s;
 }
 .chat-toggle:hover { color: var(--text); border-color: var(--gold); }
@@ -129,7 +133,7 @@ body {
 .chat-input { flex-shrink: 0; border-top: 1px solid var(--border); padding: 0.55rem; display: flex; gap: 0.4rem; }
 .chat-input input {
   flex: 1; min-width: 0; background: var(--bg-3); border: 1px solid var(--border); color: var(--text);
-  font-family: 'Press Start 2P', monospace; font-size: 0.5rem; padding: 0.45rem;
+  font-family: var(--font-base); font-size: 0.5rem; padding: 0.45rem;
 }
 .chat-input input:focus { outline: none; border-color: var(--gold); }
 .chat-signin { font-size: 0.5rem; color: var(--text-muted); padding: 0.3rem; }
@@ -167,7 +171,7 @@ body {
 .chat-name-row { display: flex; gap: 0.4rem; }
 .chat-name-row input {
   flex: 1; min-width: 0; background: var(--bg-3); border: 1px solid var(--gold); color: var(--text);
-  font-family: 'Press Start 2P', monospace; font-size: 0.5rem; padding: 0.45rem;
+  font-family: var(--font-base); font-size: 0.5rem; padding: 0.45rem;
 }
 .chat-name-row input:focus { outline: none; box-shadow: 0 0 0 1px var(--gold); }
 
@@ -236,7 +240,7 @@ body {
   border: none;
   border-right: 1px solid var(--border);
   color: var(--text-muted);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-base);
   font-size: 0.5rem;
   cursor: pointer;
   transition: color 0.15s, background 0.15s;
@@ -258,7 +262,7 @@ body {
   background: var(--bg-3);
   border: 1px solid var(--border);
   color: var(--text);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-base);
   font-size: 0.5rem;
   padding: 0.45rem 0.6rem;
   outline: none;
@@ -402,7 +406,7 @@ body {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-base);
   font-size: 0.5rem;
   padding: 0.4rem 0.75rem;
   cursor: pointer;
@@ -453,7 +457,7 @@ body {
   border: none;
   border-right: 1px solid var(--border);
   color: var(--text-muted);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-base);
   font-size: 0.45rem;
   padding: 0.5rem 1rem;
   cursor: pointer;
@@ -470,7 +474,7 @@ body {
 .sub-tabs { display: flex; gap: 0.4rem; margin-bottom: 0.55rem; }
 .sub-tab-btn {
   background: var(--bg-3); border: 1px solid var(--border); color: var(--text-muted);
-  font-family: 'Press Start 2P', monospace; font-size: 0.4rem; padding: 0.3rem 0.6rem; cursor: pointer;
+  font-family: var(--font-base); font-size: 0.4rem; padding: 0.3rem 0.6rem; cursor: pointer;
 }
 .sub-tab-btn:hover { color: var(--text); }
 .sub-tab-btn.active { color: var(--gold); border-color: var(--gold); }
@@ -599,7 +603,7 @@ body {
   background: var(--bg-3);
   border: 2px solid var(--border);
   color: var(--text-muted);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-base);
   font-size: 0.6rem;
   cursor: pointer;
   transition: all 0.1s;
@@ -637,7 +641,7 @@ body {
   background: none;
   border: none;
   color: var(--text);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-base);
   font-size: 0.7rem;
   outline: none;
   min-width: 0;
@@ -671,7 +675,7 @@ body {
 .wallet-adapter-button {
   width: 100% !important;
   justify-content: center !important;
-  font-family: 'Press Start 2P', monospace !important;
+  font-family: var(--font-base) !important;
   background-color: var(--bg-3) !important;
   border-radius: 0 !important;
   font-size: 0.55rem !important;
@@ -689,7 +693,7 @@ body {
   width: 100%;
   padding: 1rem;
   border: 2px solid;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-base);
   font-size: 0.65rem;
   cursor: pointer;
   transition: all 0.15s;
@@ -754,7 +758,7 @@ body {
   background: var(--bg-2);
   border: 2px solid var(--border);
   color: var(--text);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-base);
   font-size: 0.6rem;
   padding: 0.6rem 1rem;
   outline: none;
@@ -773,7 +777,7 @@ body {
   background: var(--bg-2);
   border: 2px solid var(--border);
   color: var(--text);
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-base);
   font-size: 0.7rem;
   padding: 0.6rem 1.2rem;
   cursor: pointer;
@@ -879,7 +883,7 @@ body {
   background: var(--accent);
   border: none;
   color: white;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--font-base);
   font-size: 0.45rem;
   padding: 0.35rem 0.5rem;
   cursor: pointer;
@@ -935,7 +939,7 @@ body {
 /* ===== PokeX perps MVP additions ===== */
 .btn-ghost {
   background: var(--bg-3); border: 1px solid var(--border); color: var(--text);
-  font-family: 'Press Start 2P', monospace; font-size: 0.5rem; padding: 0.45rem 0.6rem;
+  font-family: var(--font-base); font-size: 0.5rem; padding: 0.45rem 0.6rem;
   cursor: pointer; border-radius: 2px;
 }
 .btn-ghost:hover { border-color: var(--gold); color: var(--gold); }
@@ -1003,7 +1007,7 @@ body {
 
 /* OrderEntry card details / graded panel */
 .details-panel { width: 100%; margin-top: 0.5rem; }
-.more-info-btn { width: 100%; background: var(--bg-3); border: 1px solid var(--border); color: var(--text-muted); font-family: 'Press Start 2P', monospace; font-size: 0.45rem; padding: 0.4rem; cursor: pointer; }
+.more-info-btn { width: 100%; background: var(--bg-3); border: 1px solid var(--border); color: var(--text-muted); font-family: var(--font-base); font-size: 0.45rem; padding: 0.4rem; cursor: pointer; }
 .more-info-btn:hover { color: var(--gold); border-color: var(--gold); }
 .details-body { background: var(--bg-2); border: 1px solid var(--border); border-top: none; padding: 0.6rem; display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.45rem; }
 .detail-row { display: flex; justify-content: space-between; color: var(--text-muted); }
@@ -1016,7 +1020,7 @@ body {
 
 /* shared pixel buttons + sign colors */
 .btn-primary, .btn-secondary, .btn-ghost {
-  font-family: 'Press Start 2P', monospace; font-size: 0.5rem; padding: 0.6rem 0.9rem;
+  font-family: var(--font-base); font-size: 0.5rem; padding: 0.6rem 0.9rem;
   border: 2px solid var(--border); background: var(--bg-3); color: var(--text); cursor: pointer; transition: all 0.12s;
 }
 .btn-primary { background: var(--accent); border-color: var(--accent-lit); color: #fff; }
@@ -1052,7 +1056,7 @@ body {
 .ref-code { font-size: 0.8rem; color: var(--gold); letter-spacing: 0.1rem; }
 .ref-code-input {
   width: 100%; background: var(--bg); border: 1px solid var(--gold); color: var(--gold);
-  font-family: 'Press Start 2P', monospace; font-size: 0.7rem; letter-spacing: 0.08rem;
+  font-family: var(--font-base); font-size: 0.7rem; letter-spacing: 0.08rem;
   padding: 0.25rem 0.35rem; text-transform: uppercase;
 }
 .ref-code-input:focus { outline: none; box-shadow: 0 0 0 1px var(--gold); }
@@ -1061,7 +1065,7 @@ body {
 .ref-stats strong { color: var(--text); }
 .ref-redeem { display: flex; flex-direction: column; gap: 0.5rem; border-top: 1px solid var(--border); padding-top: 0.8rem; }
 .ref-redeem-row { display: flex; gap: 0.5rem; }
-.ref-redeem-row input { flex: 1; background: var(--bg-3); border: 1px solid var(--border); color: var(--text); font-family: 'Press Start 2P', monospace; font-size: 0.55rem; padding: 0.55rem; text-transform: uppercase; }
+.ref-redeem-row input { flex: 1; background: var(--bg-3); border: 1px solid var(--border); color: var(--text); font-family: var(--font-base); font-size: 0.55rem; padding: 0.55rem; text-transform: uppercase; }
 .ref-redeem-row input:focus { border-color: var(--gold); outline: none; }
 .ref-redeemed { color: var(--text-muted); font-size: 0.55rem; }
 .ref-redeemed strong { color: var(--gold); }
