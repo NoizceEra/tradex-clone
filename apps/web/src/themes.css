@@ -9,19 +9,20 @@
  * Card-back motifs are ORIGINAL CSS homages (Poké-Ball / compass / medallion /
  * swirl / mandala), never official artwork.
  * ======================================================================== */
-@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Cinzel:wght@600;700&family=EB+Garamond:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Spectral:wght@400;500;600&display=swap');
+/* only weights the app actually renders: 400 (body) + 600/700 (headings/brand). */
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Bebas+Neue&family=Barlow:wght@400;600;700&family=Cinzel:wght@600;700&family=EB+Garamond:wght@400;600&family=IBM+Plex+Sans:wght@400;600&family=Spectral:wght@400;600&display=swap');
 
 /* ---- Pokémon · Indigo (navy-blue, Baloo) ---- */
 [data-theme="indigo"] {
   --bg:#0a1430; --bg-2:#13245b; --bg-3:#16285f; --border:#27407f; --text:#f3f7ff; --text-muted:#9db0dd;
   --gold:#ffcb05; --accent:#3b6fd4; --accent-lit:#5a8be0; --success:#37d17a; --danger:#ff5d5d;
-  --font-base:'Baloo 2',sans-serif; --font-display:'Baloo 2',sans-serif; --cb-opacity:.16;
+  --font-base:'Baloo 2',sans-serif; --font-display:'Baloo 2',sans-serif; --cb-opacity:.16; --emblem-ink:var(--gold);
 }
 /* ---- Pokémon · Voltage (near-black, Baloo + Plex) ---- */
 [data-theme="voltage"] {
   --bg:#0B0D12; --bg-2:#13161F; --bg-3:#1B1F2B; --border:#2A2F3D; --text:#EEF1F6; --text-muted:#8A91A3;
   --gold:#FFCB05; --accent:#3D7DCA; --accent-lit:#5a8be0; --success:#3BE0A0; --danger:#FF5470;
-  --font-base:'IBM Plex Sans',sans-serif; --font-display:'Baloo 2',sans-serif; --cb-opacity:.07;
+  --font-base:'IBM Plex Sans',sans-serif; --font-display:'Baloo 2',sans-serif; --cb-opacity:.07; --emblem-ink:var(--accent);
 }
 /* ---- One Piece · Bounty (black-maroon, Bebas + Barlow) ---- */
 [data-theme="bounty"] {
@@ -48,16 +49,15 @@
   --font-base:'EB Garamond',serif; --font-display:'Cinzel',serif; --cb-opacity:.06;
 }
 
-/* Non-retro skins use smooth rendering (retro keeps pixelated/aliased from index.css). */
-[data-theme="indigo"] body, [data-theme="voltage"] body, [data-theme="bounty"] body,
-[data-theme="grandline"] body, [data-theme="antiquity"] body, [data-theme="mythic"] body {
-  image-rendering: auto; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
-}
-/* retro thumbnails stay crisp; other skins render images smoothly */
-[data-theme="indigo"] img, [data-theme="voltage"] img, [data-theme="bounty"] img,
-[data-theme="grandline"] img, [data-theme="antiquity"] img, [data-theme="mythic"] img {
-  image-rendering: auto;
-}
+/* Everything below applies to every non-retro skin (arcade = the pixel look from index.css). */
+/* Smooth rendering (retro keeps pixelated/aliased). */
+:root:not([data-theme="arcade"]) body { image-rendering: auto; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+:root:not([data-theme="arcade"]) img { image-rendering: auto; }
+/* Press Start 2P fills the em; modern fonts render smaller at the same rem, so scale the root
+   up so text stays readable. Retro stays at the browser default (16px). */
+:root:not([data-theme="arcade"]) { font-size: 19px; }
+/* the brand's hard pixel text-shadow only reads on the pixel font */
+:root:not([data-theme="arcade"]) .nav-brand { text-shadow: none; letter-spacing: 0.5px; }
 
 /* headings adopt the skin's display font (retro: same pixel font, no change) */
 .nav-brand, .card-header-name, .preview-label, .page h2, .page h3 { font-family: var(--font-display); }
@@ -72,43 +72,44 @@
   position: absolute; left: 62%; top: 50%; width: 440px; height: 440px;
   transform: translate(-50%,-50%); border-radius: 50%; overflow: hidden;
 }
-/* retro: faint pixel grid, no emblem */
-[data-theme="arcade"] .skin-cardback, :root .skin-cardback {
+/* retro: faint pixel grid (no emblem). Other skins leave the layer transparent for their emblem. */
+[data-theme="arcade"] .skin-cardback {
   opacity: .4;
   background-image: linear-gradient(rgba(240,192,64,.05) 1px, transparent 1px),
                     linear-gradient(90deg, rgba(240,192,64,.05) 1px, transparent 1px);
   background-size: 18px 18px;
 }
-[data-theme="indigo"] .skin-cardback, [data-theme="voltage"] .skin-cardback,
-[data-theme="bounty"] .skin-cardback, [data-theme="grandline"] .skin-cardback,
-[data-theme="antiquity"] .skin-cardback, [data-theme="mythic"] .skin-cardback { background-image: none; }
-/* Poké-Ball geometry (Indigo gold, Voltage blue) */
-[data-theme="indigo"] .skin-emblem { border:14px solid var(--gold);
-  background:radial-gradient(circle,var(--bg) 0 34px,var(--gold) 34px 48px,transparent 48px) center/100% 100% no-repeat; }
-[data-theme="indigo"] .skin-emblem::before { content:""; position:absolute; left:-14px; right:-14px; top:calc(50% - 9px); height:18px; background:var(--gold); }
-[data-theme="voltage"] .skin-emblem { border:14px solid var(--accent);
-  background:radial-gradient(circle,var(--bg) 0 34px,var(--accent) 34px 48px,transparent 48px) center/100% 100% no-repeat; }
-[data-theme="voltage"] .skin-emblem::before { content:""; position:absolute; left:-14px; right:-14px; top:calc(50% - 9px); height:18px; background:var(--accent); }
+/* Poké-Ball geometry — identical shape, inked via --emblem-ink (Indigo gold / Voltage blue) */
+[data-theme="indigo"] .skin-emblem, [data-theme="voltage"] .skin-emblem { border:14px solid var(--emblem-ink);
+  background:radial-gradient(circle,var(--bg) 0 34px,var(--emblem-ink) 34px 48px,transparent 48px) center/100% 100% no-repeat; }
+[data-theme="indigo"] .skin-emblem::before, [data-theme="voltage"] .skin-emblem::before {
+  content:""; position:absolute; left:-14px; right:-14px; top:calc(50% - 9px); height:18px; background:var(--emblem-ink); }
 /* One Piece · Bounty — Straw-Hat medallion (concentric rings) */
 [data-theme="bounty"] .skin-emblem { border:11px solid var(--gold);
   background:radial-gradient(circle,transparent 0 96px,var(--accent) 96px 108px,transparent 108px) center/100% 100% no-repeat; }
 [data-theme="bounty"] .skin-emblem::after { content:""; position:absolute; inset:40px; border-radius:50%; border:7px solid var(--accent); }
-/* One Piece · Grand Line — 16-point compass rose */
+/* Conic emblems: Grand Line compass rose · Antiquity Deckmaster swirl · Mythic arcane mandala */
 [data-theme="grandline"] .skin-emblem { border:3px solid var(--gold);
   background:repeating-conic-gradient(var(--gold) 0 1.5deg, transparent 1.5deg 22.5deg); }
-[data-theme="grandline"] .skin-emblem::after { content:""; position:absolute; inset:110px; border-radius:50%; border:3px solid var(--gold); background:var(--bg); }
-/* Magic · Antiquity — Deckmaster swirl (quarter conic) */
 [data-theme="antiquity"] .skin-emblem { border:9px solid var(--gold);
   background:conic-gradient(var(--gold) 0 25%, transparent 0 50%, var(--gold) 0 75%, transparent 0); }
-[data-theme="antiquity"] .skin-emblem::after { content:""; position:absolute; inset:70px; border-radius:50%; border:7px solid var(--gold); background:var(--bg); }
-/* Magic · Mythic — arcane mandala (fine sunburst) + violet bleed */
 [data-theme="mythic"] .skin-emblem { border:3px solid var(--gold);
   background:repeating-conic-gradient(var(--gold) 0 .8deg, transparent .8deg 7.5deg); }
-[data-theme="mythic"] .skin-emblem::after { content:""; position:absolute; inset:88px; border-radius:50%; border:2px solid var(--gold); background:var(--bg); }
+/* shared inner disc for the three conic emblems — only inset + border width differ */
+[data-theme="grandline"] .skin-emblem::after, [data-theme="antiquity"] .skin-emblem::after, [data-theme="mythic"] .skin-emblem::after {
+  content:""; position:absolute; border-radius:50%; background:var(--bg); border:3px solid var(--gold); }
+[data-theme="grandline"] .skin-emblem::after { inset:110px; }
+[data-theme="antiquity"] .skin-emblem::after { inset:70px; border-width:7px; }
+[data-theme="mythic"] .skin-emblem::after { inset:88px; border-width:2px; }
 [data-theme="mythic"] .skin-cardback { background:radial-gradient(circle at 78% 22%, rgba(122,79,181,.10), transparent 60%); }
 
+/* Keep navbar controls on one line (the larger non-retro font otherwise wraps + overflows 64px). */
+.wallet-adapter-button { white-space: nowrap !important; }
+.auth-pill, .auth-addr { white-space: nowrap; }
+/* tighter padding so the 5 bottom-panel tabs fit at the larger non-retro font (retro unchanged) */
+:root:not([data-theme="arcade"]) .bottom-tab-btn { padding-left: 0.55rem; padding-right: 0.55rem; }
+
 /* =================== theme picker (navbar chip + drawer) =================== */
-.nav-actions { display: flex; align-items: center; gap: 0.6rem; }
 .theme-trigger {
   display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border);
   background:var(--bg-3); color:var(--text); font-family:var(--font-base); font-size:0.5rem;
