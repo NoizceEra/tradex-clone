@@ -943,6 +943,12 @@ body {
 .ref-field { flex: 1; min-width: 9rem; display: flex; flex-direction: column; gap: 0.4rem; background: var(--bg-3); border: 1px dashed var(--border); padding: 0.6rem 0.8rem; }
 .ref-label { font-size: 0.4rem; color: var(--text-muted); letter-spacing: 0.05rem; }
 .ref-code { font-size: 0.8rem; color: var(--gold); letter-spacing: 0.1rem; }
+.ref-code-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--gold); color: var(--gold);
+  font-family: 'Press Start 2P', monospace; font-size: 0.7rem; letter-spacing: 0.08rem;
+  padding: 0.25rem 0.35rem; text-transform: uppercase;
+}
+.ref-code-input:focus { outline: none; box-shadow: 0 0 0 1px var(--gold); }
 .ref-copy { white-space: nowrap; }
 .ref-stats { margin: 0.8rem 0; font-size: 0.55rem; color: var(--text-muted); }
 .ref-stats strong { color: var(--text); }

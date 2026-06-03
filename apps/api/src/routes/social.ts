@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
-import { ReferralRedeemRequest } from '@pokex/shared-types';
+import { ReferralRedeemRequest, ReferralCodeRequest } from '@pokex/shared-types';
 import { getDb } from '../db/client.ts';
 import { authenticate } from '../plugins/auth.ts';
 import { verifyAccessToken } from '../services/auth.ts';
 import { getLeaderboard } from '../services/leaderboard.ts';
-import { getReferralInfo, redeemReferral } from '../services/referral.ts';
+import { getReferralInfo, redeemReferral, setReferralCode } from '../services/referral.ts';
 
 export async function socialRoutes(app: FastifyInstance): Promise<void> {
   // Public board; a Bearer token is OPTIONAL and only used to pin the caller's own row.
@@ -31,5 +31,10 @@ export async function socialRoutes(app: FastifyInstance): Promise<void> {
   app.post('/referral/redeem', { preHandler: authenticate }, async (req) => {
     const { code } = ReferralRedeemRequest.parse(req.body ?? {});
     return redeemReferral(await getDb(), req.userId!, code);
+  });
+
+  app.post('/referral/code', { preHandler: authenticate }, async (req) => {
+    const { code } = ReferralCodeRequest.parse(req.body ?? {});
+    return setReferralCode(await getDb(), req.userId!, code);
   });
 }

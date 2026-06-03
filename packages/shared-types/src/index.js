@@ -101,6 +101,10 @@ export const ReferralRedeemRequest = z.object({
   code: z.string().trim().min(4).max(32),
 });
 
+export const ReferralCodeRequest = z.object({
+  code: z.string().trim().min(4).max(20), // server normalizes + validates charset
+});
+
 // --- auth (SIWS) -------------------------------------------------------------
 
 export const NonceRequest = z.object({ pubkey: z.string().min(32) });

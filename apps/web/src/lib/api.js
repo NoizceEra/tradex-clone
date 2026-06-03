@@ -110,6 +110,7 @@ export const closePosition = (positionId, body) =>
 export const getLeaderboard = (limit = 100) => req(`/leaderboard?limit=${limit}`, { auth: true });
 export const getReferral = () => req('/referral/me', { auth: true });
 export const redeemReferral = (code) => req('/referral/redeem', { method: 'POST', auth: true, body: { code } });
+export const setReferralCode = (code) => req('/referral/code', { method: 'POST', auth: true, body: { code } });
 
 // A ?ref=CODE link is captured on first load and held until the user signs in and redeems it.
 const REF_KEY = 'pokeX_ref';

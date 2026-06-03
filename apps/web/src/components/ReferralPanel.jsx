@@ -8,6 +8,10 @@ export function ReferralPanel({ onRedeemed }) {
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [newCode, setNewCode] = useState('');
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeErr, setCodeErr] = useState(null);
 
   const load = useCallback(() => {
     api.getReferral().then(setInfo).catch(() => {});
@@ -23,6 +27,26 @@ export function ReferralPanel({ onRedeemed }) {
       setTimeout(() => setCopied(false), 1500);
     } catch {
       /* clipboard blocked */
+    }
+  };
+
+  const startEdit = () => {
+    setNewCode(info.code);
+    setCodeErr(null);
+    setEditing(true);
+  };
+
+  const saveCode = async () => {
+    setCodeErr(null);
+    setCodeBusy(true);
+    try {
+      await api.setReferralCode(newCode.trim());
+      setEditing(false);
+      load(); // refresh info.code + the share link
+    } catch (e) {
+      setCodeErr(e.message);
+    } finally {
+      setCodeBusy(false);
     }
   };
 
@@ -54,13 +78,34 @@ export function ReferralPanel({ onRedeemed }) {
         </p>
       )}
 
-      <div className="ref-code-box">
-        <div className="ref-field">
-          <span className="ref-label">YOUR CODE</span>
-          <span className="ref-code">{info.code}</span>
+      {editing ? (
+        <>
+          <div className="ref-code-box">
+            <div className="ref-field">
+              <span className="ref-label">YOUR CODE</span>
+              <input
+                className="ref-code-input"
+                value={newCode}
+                maxLength={20}
+                placeholder="YOUR-CODE"
+                onChange={(e) => setNewCode(e.target.value.toUpperCase())}
+              />
+            </div>
+            <button className="btn-primary" disabled={codeBusy || newCode.trim().length < 4} onClick={saveCode}>{codeBusy ? '…' : 'Save'}</button>
+            <button className="btn-secondary" onClick={() => { setEditing(false); setCodeErr(null); }}>Cancel</button>
+          </div>
+          {codeErr && <div className="order-error">{codeErr}</div>}
+        </>
+      ) : (
+        <div className="ref-code-box">
+          <div className="ref-field">
+            <span className="ref-label">YOUR CODE</span>
+            <span className="ref-code">{info.code}</span>
+          </div>
+          <button className="btn-secondary ref-copy" onClick={copy}>{copied ? 'Copied ✓' : 'Copy link'}</button>
+          <button className="btn-secondary ref-copy" onClick={startEdit}>Edit</button>
         </div>
-        <button className="btn-secondary ref-copy" onClick={copy}>{copied ? 'Copied ✓' : 'Copy link'}</button>
-      </div>
+      )}
 
       <div className="ref-stats">
         <span>Friends referred: <strong>{info.referralsCount}</strong></span>

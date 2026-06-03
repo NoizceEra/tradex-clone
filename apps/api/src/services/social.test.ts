@@ -13,7 +13,7 @@ const { ingest } = await import('./oracle.ts');
 const { listMarketsWithData } = await import('./markets.ts');
 const { creditFaucet, getUserBalances } = await import('./faucet.ts');
 const { openPosition, closePosition, getUserPositions } = await import('./engine.ts');
-const { assignReferralCode, getReferralInfo, redeemReferral } = await import('./referral.ts');
+const { assignReferralCode, getReferralInfo, redeemReferral, setReferralCode } = await import('./referral.ts');
 const { getLeaderboard } = await import('./leaderboard.ts');
 const { lpDeposit } = await import('./lp.ts');
 const { reconcile } = await import('./reconcile.ts');
@@ -70,6 +70,24 @@ test('redeeming a referral code attributes once and pays both parties', async ()
 
   // can't redeem twice
   await assert.rejects(redeemReferral(db, newbie, code), /already redeemed/);
+});
+
+test('a user can rename their referral code; duplicates and bad formats are rejected', async () => {
+  const a = await newUser();
+  const b = await newUser();
+
+  const r = await setReferralCode(db, a, 'hugh-1');
+  assert.equal(r.code, 'HUGH-1'); // normalized to uppercase
+  assert.equal((await getReferralInfo(db, a)).code, 'HUGH-1');
+
+  await assert.rejects(setReferralCode(db, b, 'HUGH-1'), /already taken/); // a owns it
+  await assert.rejects(setReferralCode(db, b, 'ab'), /4-20/); // too short
+  await assert.rejects(setReferralCode(db, b, 'no spaces!'), /letters/); // bad charset
+
+  // the renamed code is redeemable (case-insensitive)
+  const redeem = await redeemReferral(db, b, 'hugh-1');
+  assert.equal(redeem.credited, true);
+  assert.equal((await getReferralInfo(db, b)).referredByCode, 'HUGH-1');
 });
 
 test('leaderboard counts LP capital as account value, not a phantom trading loss', async () => {

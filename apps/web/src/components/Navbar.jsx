@@ -3,9 +3,9 @@ import { AuthButton } from './AuthButton';
 const NAV = [
   ['trade', 'Exchange'],
   ['markets', 'Markets'],
-  ['portfolio', 'Portfolio'],
   ['pool', 'Pool'],
   ['leaderboard', 'Leaderboard'],
+  ['portfolio', 'Portfolio'],
 ];
 
 export function Navbar({ activeView, setActiveView }) {

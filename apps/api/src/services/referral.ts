@@ -46,6 +46,27 @@ export async function assignReferralCode(q: Queryer, userId: string): Promise<st
   throw new HttpError(500, 'could not allocate a referral code');
 }
 
+/**
+ * Change a user's own referral code to a custom one. Normalizes to uppercase, validates the format,
+ * and enforces global uniqueness: the pre-check returns a clean error for the common case, and the
+ * uq_users_referral_code unique index (a caught 23505) closes the race against a concurrent claim.
+ */
+export async function setReferralCode(db: Db, userId: string, rawCode: string): Promise<{ code: string }> {
+  const code = rawCode.trim().toUpperCase();
+  if (code.length < 4 || code.length > 20 || !/^[A-Z0-9-]+$/.test(code) || code.startsWith('-') || code.endsWith('-')) {
+    throw new HttpError(400, 'code must be 4-20 characters: letters, numbers and dashes (not starting or ending with a dash)');
+  }
+  const taken = await db.query(`SELECT 1 FROM users WHERE referral_code = $1 AND id <> $2`, [code, userId]);
+  if (taken.rows[0]) throw new HttpError(409, 'that referral code is already taken');
+  try {
+    await db.query(`UPDATE users SET referral_code = $1 WHERE id = $2`, [code, userId]);
+  } catch (e) {
+    if ((e as { code?: string })?.code === '23505') throw new HttpError(409, 'that referral code is already taken');
+    throw e;
+  }
+  return { code };
+}
+
 export interface ReferralInfo {
   code: string;
   referralsCount: number; // how many users this account has referred
