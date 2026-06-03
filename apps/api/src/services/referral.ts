@@ -28,7 +28,9 @@ export async function assignReferralCode(q: Queryer, userId: string): Promise<st
     try {
       set = await q.query<{ referral_code: string }>(
         `UPDATE users SET referral_code=$1
-         WHERE id=$2 AND referral_code IS NULL AND NOT EXISTS (SELECT 1 FROM users WHERE referral_code=$1)
+         WHERE id=$2 AND referral_code IS NULL
+           AND NOT EXISTS (SELECT 1 FROM users WHERE referral_code=$1)
+           AND NOT EXISTS (SELECT 1 FROM referral_code_aliases WHERE code=$1)
          RETURNING referral_code`,
         [code, userId],
       );
@@ -56,15 +58,35 @@ export async function setReferralCode(db: Db, userId: string, rawCode: string): 
   if (code.length < 4 || code.length > 20 || !/^[A-Z0-9-]+$/.test(code) || code.startsWith('-') || code.endsWith('-')) {
     throw new HttpError(400, 'code must be 4-20 characters: letters, numbers and dashes (not starting or ending with a dash)');
   }
-  const taken = await db.query(`SELECT 1 FROM users WHERE referral_code = $1 AND id <> $2`, [code, userId]);
-  if (taken.rows[0]) throw new HttpError(409, 'that referral code is already taken');
-  try {
-    await db.query(`UPDATE users SET referral_code = $1 WHERE id = $2`, [code, userId]);
-  } catch (e) {
-    if ((e as { code?: string })?.code === '23505') throw new HttpError(409, 'that referral code is already taken');
-    throw e;
-  }
-  return { code };
+  if (code.startsWith('POKE-')) throw new HttpError(400, 'the POKE- prefix is reserved for auto-assigned codes');
+
+  return db.tx(async (q) => {
+    const cur = await q.query<{ referral_code: string | null }>(`SELECT referral_code FROM users WHERE id=$1`, [userId]);
+    const current = cur.rows[0]?.referral_code ?? null;
+    if (current === code) return { code }; // no-op
+
+    // uniqueness spans live codes AND reserved (renamed-away) aliases, excluding this user's own
+    const taken = await q.query(
+      `SELECT 1 FROM users WHERE referral_code=$1 AND id<>$2
+       UNION ALL SELECT 1 FROM referral_code_aliases WHERE code=$1 AND user_id<>$2`,
+      [code, userId],
+    );
+    if (taken.rows[0]) throw new HttpError(409, 'that referral code is already taken');
+
+    // reserve the prior code permanently so it can't be hijacked and old links still resolve here
+    if (current) {
+      await q.query(`INSERT INTO referral_code_aliases(code, user_id) VALUES($1,$2) ON CONFLICT(code) DO NOTHING`, [current, userId]);
+    }
+    try {
+      await q.query(`UPDATE users SET referral_code=$1 WHERE id=$2`, [code, userId]);
+    } catch (e) {
+      if ((e as { code?: string })?.code === '23505') throw new HttpError(409, 'that referral code is already taken');
+      throw e;
+    }
+    // if the new code was previously this user's reserved alias, it's now their live code
+    await q.query(`DELETE FROM referral_code_aliases WHERE code=$1 AND user_id=$2`, [code, userId]);
+    return { code };
+  });
 }
 
 export interface ReferralInfo {
@@ -105,8 +127,14 @@ export async function getReferralInfo(db: Db, userId: string): Promise<ReferralI
  */
 export async function redeemReferral(db: Db, userId: string, rawCode: string): Promise<{ ok: true; bonusUsd: number; credited: boolean }> {
   const code = rawCode.trim().toUpperCase();
-  const ref = await db.query<{ id: string }>(`SELECT id FROM users WHERE referral_code=$1`, [code]);
-  const referrerId = ref.rows[0]?.id;
+  // resolve to the owner via their live code OR a reserved alias (so old ?ref= links keep working)
+  const ref = await db.query<{ user_id: string }>(
+    `SELECT id AS user_id FROM users WHERE referral_code=$1
+     UNION ALL SELECT user_id FROM referral_code_aliases WHERE code=$1
+     LIMIT 1`,
+    [code],
+  );
+  const referrerId = ref.rows[0]?.user_id;
   if (!referrerId) throw new HttpError(404, 'invalid referral code');
   if (referrerId === userId) throw new HttpError(400, 'you cannot redeem your own code');
 

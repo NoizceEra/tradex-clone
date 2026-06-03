@@ -72,20 +72,28 @@ test('redeeming a referral code attributes once and pays both parties', async ()
   await assert.rejects(redeemReferral(db, newbie, code), /already redeemed/);
 });
 
-test('a user can rename their referral code; duplicates and bad formats are rejected', async () => {
+test('renaming reserves old codes (anti-hijack) + the POKE- namespace; old links still resolve', async () => {
   const a = await newUser();
   const b = await newUser();
+  const aOrig = (await getReferralInfo(db, a)).code; // auto POKE-XXXXX
 
-  const r = await setReferralCode(db, a, 'hugh-1');
-  assert.equal(r.code, 'HUGH-1'); // normalized to uppercase
-  assert.equal((await getReferralInfo(db, a)).code, 'HUGH-1');
+  assert.equal((await setReferralCode(db, a, 'hugh-1')).code, 'HUGH-1'); // normalized + set
+  await setReferralCode(db, a, 'hugh-2'); // HUGH-1 is now a freed custom code
+  assert.equal((await getReferralInfo(db, a)).code, 'HUGH-2');
 
-  await assert.rejects(setReferralCode(db, b, 'HUGH-1'), /already taken/); // a owns it
+  // nobody else can claim a's current code, a's freed code, or anything POKE-shaped
+  await assert.rejects(setReferralCode(db, b, 'HUGH-2'), /already taken/); // a's current
+  await assert.rejects(setReferralCode(db, b, 'HUGH-1'), /already taken/); // a's reserved alias
+  await assert.rejects(setReferralCode(db, b, aOrig), /reserved/); // POKE- namespace
+  await assert.rejects(setReferralCode(db, b, 'POKE-ZZZZZ'), /reserved/);
   await assert.rejects(setReferralCode(db, b, 'ab'), /4-20/); // too short
   await assert.rejects(setReferralCode(db, b, 'no spaces!'), /letters/); // bad charset
 
-  // the renamed code is redeemable (case-insensitive)
-  const redeem = await redeemReferral(db, b, 'hugh-1');
+  // a can rename back to a code they previously held (their own reserved alias)
+  assert.equal((await setReferralCode(db, a, 'hugh-1')).code, 'HUGH-1');
+
+  // old links keep working: b redeems a's now-freed code; attribution resolves to a's current code
+  const redeem = await redeemReferral(db, b, 'hugh-2');
   assert.equal(redeem.credited, true);
   assert.equal((await getReferralInfo(db, b)).referredByCode, 'HUGH-1');
 });

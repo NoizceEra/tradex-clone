@@ -76,6 +76,16 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_at TIMESTAMPTZ;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_users_referral_code ON users(referral_code);
 CREATE INDEX IF NOT EXISTS idx_users_referred_by ON users(referred_by);
 
+-- Codes a user previously held (freed by a rename). Reserved permanently so a renamed-away code
+-- can't be re-registered by anyone else (anti-hijack) and old ?ref= links keep resolving to the
+-- original owner. Uniqueness of a code spans BOTH users.referral_code and this table.
+CREATE TABLE IF NOT EXISTS referral_code_aliases (
+  code       TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_referral_alias_user ON referral_code_aliases(user_id);
+
 CREATE TABLE IF NOT EXISTS auth_nonces (
   nonce      TEXT PRIMARY KEY,
   pubkey     TEXT NOT NULL,
