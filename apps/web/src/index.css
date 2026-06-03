@@ -429,6 +429,19 @@ body {
   flex-shrink: 0;
 }
 
+/* draggable splitter between the chart and the bottom panel */
+.panel-resizer {
+  height: 7px;
+  flex-shrink: 0;
+  cursor: row-resize;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.panel-resizer::after { content: ''; width: 40px; height: 3px; border-radius: 2px; background: var(--border); }
+.panel-resizer:hover::after { background: var(--gold); }
+
 .bottom-tabs {
   display: flex;
   border-bottom: 1px solid var(--border);

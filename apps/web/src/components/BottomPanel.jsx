@@ -57,7 +57,7 @@ function DataTab({ head, user, err, rows, empty, renderRows }) {
   );
 }
 
-export function BottomPanel({ market }) {
+export function BottomPanel({ market, height }) {
   const { user } = useAuth();
   const oi = useRealtime((s) => s.oi);
   const [tab, setTab] = useState('oi');
@@ -102,7 +102,7 @@ export function BottomPanel({ market }) {
   const longPct = totalOi > 0 ? (longU / totalOi) * 100 : 50;
 
   return (
-    <div className="bottom-panel">
+    <div className="bottom-panel" style={height ? { height: `${height}px` } : undefined}>
       <div className="bottom-tabs">
         {TABS.map(([v, label]) => (
           <button key={v} className={`bottom-tab-btn ${tab === v ? 'active' : ''}`} onClick={() => selectTab(v)}>
