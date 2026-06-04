@@ -10,18 +10,24 @@ import { z } from 'zod';
 // --- enums / constants ------------------------------------------------------
 
 export const MARKET_KINDS = ['card', 'index'];
+export const GAMES = ['pokemon', 'onepiece', 'mtg']; // raw prices via scrydex (Pokémon live; OP/MTG pending)
 export const SIDES = ['long', 'short'];
 export const ORDER_KINDS = ['market', 'reduce_only'];
 export const MARKET_STATUS = ['active', 'reduce_only', 'halted', 'delisted'];
 
 export const INDEX_SLUGS = ['top-250', 'top-100', 'graded', 'sealed'];
 
-/** Index catalogue (mirrors TCGFish widget set). `tradeable:false` = data source pending. */
+/** Per-game index catalogue. `tradeable:false` = data source pending (shown but gated). Pokémon is
+ * computed live from the ingest; One Piece + MTG are listed but gated until scrydex card data lands. */
 export const INDEX_CATALOG = [
-  { slug: 'top-100', name: 'Top 100', tracks: 'Top 100 cards by market price', tradeable: true, topN: 100 },
-  { slug: 'top-250', name: 'Top 250', tracks: 'Top 250 cards by market price', tradeable: true, topN: 250 },
-  { slug: 'graded', name: 'Graded (PSA 10)', tracks: 'PSA 10 graded cards', tradeable: false, topN: null },
-  { slug: 'sealed', name: 'Sealed', tracks: 'Sealed product', tradeable: false, topN: null },
+  { game: 'pokemon', slug: 'top-100', name: 'Top 100', tracks: 'Top 100 cards by market price', tradeable: true, topN: 100 },
+  { game: 'pokemon', slug: 'top-250', name: 'Top 250', tracks: 'Top 250 cards by market price', tradeable: true, topN: 250 },
+  { game: 'pokemon', slug: 'graded', name: 'Graded (PSA 10)', tracks: 'PSA 10 graded cards', tradeable: false, topN: null },
+  { game: 'pokemon', slug: 'sealed', name: 'Sealed', tracks: 'Sealed product', tradeable: false, topN: null },
+  { game: 'onepiece', slug: 'top-100', name: 'Top 100', tracks: 'Top 100 cards by market price', tradeable: false, topN: 100 },
+  { game: 'onepiece', slug: 'top-250', name: 'Top 250', tracks: 'Top 250 cards by market price', tradeable: false, topN: 250 },
+  { game: 'mtg', slug: 'top-100', name: 'Top 100', tracks: 'Top 100 cards by market price', tradeable: false, topN: 100 },
+  { game: 'mtg', slug: 'top-250', name: 'Top 250', tracks: 'Top 250 cards by market price', tradeable: false, topN: 250 },
 ];
 
 export const MAX_LEVERAGE = 20;
@@ -34,6 +40,7 @@ export const MicroStr = z.string().regex(/^-?\d+$/, 'expected an integer micro-u
 export const MarketSchema = z.object({
   id: z.string(),
   kind: z.enum(MARKET_KINDS),
+  game: z.enum(GAMES),
   symbol: z.string(),
   displayName: z.string(),
   cardId: z.string().nullable().optional(),

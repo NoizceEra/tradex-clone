@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS markets (
   id                 TEXT PRIMARY KEY,
   kind               TEXT NOT NULL,            -- 'card' | 'index'
+  game               TEXT NOT NULL DEFAULT 'pokemon', -- 'pokemon' | 'onepiece' | 'mtg'
   symbol             TEXT UNIQUE NOT NULL,
   display_name       TEXT NOT NULL,
   card_id            TEXT,
@@ -154,6 +155,8 @@ CREATE TABLE IF NOT EXISTS markets (
 CREATE INDEX IF NOT EXISTS idx_markets_kind ON markets(kind, status);
 -- upgrade existing DBs (no-op on a fresh schema)
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS image_large TEXT;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS game TEXT NOT NULL DEFAULT 'pokemon';
+CREATE INDEX IF NOT EXISTS idx_markets_game ON markets(game, kind, status);
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS set_logo TEXT;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS metadata JSONB;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS graded_psa10_e6 BIGINT;

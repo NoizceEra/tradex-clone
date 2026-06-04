@@ -125,6 +125,7 @@ export async function ingest(
   for (const { c, priceE6 } of priced) {
     const marketId = await db.tx((q) =>
       upsertCardMarket(q, {
+        game: 'pokemon', // raw cards come from pokemontcg.io (Pokémon-only); scrydex adds OP/MTG later
         symbol: c.id,
         cardId: c.id,
         displayName: `${c.name}${c.number ? ' #' + c.number : ''}`,
@@ -165,12 +166,12 @@ export async function ingest(
         await buildIndex(db, idx, gradedMembers, observedAt);
         indices++;
       } else {
-        await db.tx((q) => upsertIndexMarket(q, { slug: idx.slug, name: idx.name, tradeable: false }));
+        await db.tx((q) => upsertIndexMarket(q, { game: idx.game, slug: idx.slug, name: idx.name, tradeable: false }));
       }
       continue;
     }
     if (!idx.tradeable) {
-      await db.tx((q) => upsertIndexMarket(q, { slug: idx.slug, name: idx.name, tradeable: false }));
+      await db.tx((q) => upsertIndexMarket(q, { game: idx.game, slug: idx.slug, name: idx.name, tradeable: false }));
       continue;
     }
     const n = idx.topN ?? sorted.length;
@@ -183,13 +184,13 @@ export async function ingest(
 
 async function buildIndex(
   db: Db,
-  idx: { slug: string; name: string },
+  idx: { game: string; slug: string; name: string },
   members: { cardId: string; priceE6: bigint }[],
   observedAt: Date,
 ): Promise<void> {
   if (members.length === 0) return;
   const rawE6 = members.reduce((a, m) => a + m.priceE6, 0n);
-  const marketId = await db.tx((q) => upsertIndexMarket(q, { slug: idx.slug, name: idx.name, tradeable: true }));
+  const marketId = await db.tx((q) => upsertIndexMarket(q, { game: idx.game, slug: idx.slug, name: idx.name, tradeable: true }));
 
   // Divisor: based at BASE_VALUE on first build, then RE-BASED whenever the constituent set
   // changes so the index value is continuous across rebalances (composition shouldn't move it).

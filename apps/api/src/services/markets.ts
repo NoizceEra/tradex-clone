@@ -10,6 +10,7 @@ const INDEX_OI_CAP = usdc(250_000).toString();
 export interface MarketRow {
   id: string;
   kind: 'card' | 'index';
+  game: string;
   symbol: string;
   display_name: string;
   card_id: string | null;
@@ -32,7 +33,7 @@ export interface MarketRow {
   price_tick_e6: string;
 }
 
-const COLS = `id, kind, symbol, display_name, card_id, variant, index_slug, image_small, set_logo, status, tradeable,
+const COLS = `id, kind, game, symbol, display_name, card_id, variant, index_slug, image_small, set_logo, status, tradeable,
   max_leverage_e2, init_margin_bps, maint_margin_bps,
   max_oi_long_uusdc::text AS max_oi_long_uusdc, max_oi_short_uusdc::text AS max_oi_short_uusdc,
   skew_k_e6::text AS skew_k_e6, premium_cap_e6::text AS premium_cap_e6, max_dev_bps,
@@ -44,6 +45,7 @@ export async function getMarketById(q: Queryer, id: string): Promise<MarketRow |
 }
 
 export interface CardUpsert {
+  game?: string; // 'pokemon' | 'onepiece' | 'mtg' (defaults to pokemon)
   symbol: string;
   cardId: string;
   displayName: string;
@@ -58,13 +60,13 @@ export async function upsertCardMarket(q: Queryer, opts: CardUpsert): Promise<st
   const id = randomUUID();
   const meta = opts.metadata != null ? JSON.stringify(opts.metadata) : null;
   await q.query(
-    `INSERT INTO markets(id, kind, symbol, display_name, card_id, variant, image_small, image_large, set_logo, metadata, tradeable,
+    `INSERT INTO markets(id, kind, game, symbol, display_name, card_id, variant, image_small, image_large, set_logo, metadata, tradeable,
        max_oi_long_uusdc, max_oi_short_uusdc)
-     VALUES($1, 'card', $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $10)
+     VALUES($1, 'card', $11, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, $10)
      ON CONFLICT(symbol) DO UPDATE
        SET display_name = EXCLUDED.display_name, image_small = EXCLUDED.image_small, image_large = EXCLUDED.image_large,
            set_logo = EXCLUDED.set_logo, metadata = EXCLUDED.metadata, variant = EXCLUDED.variant`,
-    [id, opts.symbol, opts.displayName, opts.cardId, opts.variant, opts.imageSmall, opts.imageLarge ?? null, opts.setLogo ?? null, meta, CARD_OI_CAP],
+    [id, opts.symbol, opts.displayName, opts.cardId, opts.variant, opts.imageSmall, opts.imageLarge ?? null, opts.setLogo ?? null, meta, CARD_OI_CAP, opts.game ?? 'pokemon'],
   );
   const r = await q.query<{ id: string }>(`SELECT id FROM markets WHERE symbol = $1`, [opts.symbol]);
   return r.rows[0].id;
@@ -72,18 +74,20 @@ export async function upsertCardMarket(q: Queryer, opts: CardUpsert): Promise<st
 
 export async function upsertIndexMarket(
   q: Queryer,
-  opts: { slug: string; name: string; tradeable: boolean },
+  opts: { game: string; slug: string; name: string; tradeable: boolean },
 ): Promise<string> {
   const id = randomUUID();
-  const symbol = `INDEX:${opts.slug}`;
+  // Pokémon keeps its original un-namespaced symbol (back-compat, preserves history); other games are
+  // namespaced so e.g. One Piece 'top-100' can't collide with Pokémon's.
+  const symbol = opts.game === 'pokemon' ? `INDEX:${opts.slug}` : `INDEX:${opts.game}:${opts.slug}`;
   const oi = INDEX_OI_CAP;
   await q.query(
-    `INSERT INTO markets(id, kind, symbol, display_name, index_slug, tradeable,
+    `INSERT INTO markets(id, kind, game, symbol, display_name, index_slug, tradeable,
        max_oi_long_uusdc, max_oi_short_uusdc, max_dev_bps)
-     VALUES($1, 'index', $2, $3, $4, $5, $6, $6, 1000)
+     VALUES($1, 'index', $7, $2, $3, $4, $5, $6, $6, 1000)
      ON CONFLICT(symbol) DO UPDATE
        SET display_name = EXCLUDED.display_name, tradeable = EXCLUDED.tradeable`,
-    [id, symbol, opts.name, opts.slug, opts.tradeable, oi],
+    [id, symbol, opts.name, opts.slug, opts.tradeable, oi, opts.game],
   );
   const r = await q.query<{ id: string }>(`SELECT id FROM markets WHERE symbol = $1`, [symbol]);
   return r.rows[0].id;
@@ -93,6 +97,7 @@ export async function upsertIndexMarket(
 export interface MarketView {
   id: string;
   kind: 'card' | 'index';
+  game: string;
   symbol: string;
   displayName: string;
   cardId: string | null;
@@ -158,6 +163,7 @@ export async function listMarketsWithData(db: Db): Promise<MarketView[]> {
     return {
       id: m.id,
       kind: m.kind,
+      game: m.game,
       symbol: m.symbol,
       displayName: m.display_name,
       cardId: m.card_id,
