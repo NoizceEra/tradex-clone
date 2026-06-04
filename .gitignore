@@ -37,3 +37,6 @@ dist-ssr
 
 # Turborepo cache
 .turbo
+
+# Local design mockups (HTML design source-of-truth, kept out of the repo)
+mockups/
