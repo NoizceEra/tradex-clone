@@ -4,6 +4,15 @@ import { useRealtime } from '../store/realtime';
 
 const TABS = ['indices', 'cards'];
 
+// Game filter (icon-only identity dots). Fixed brand colours, independent of the skin:
+// gold = Pokémon, red = One Piece, violet = Magic. Markets without a `game` (the current
+// Pokémon-only backend) read as 'pokemon'; One Piece / MTG stay empty until the data lands.
+const GAMES = [
+  { id: 'pokemon', label: 'Pokémon', color: '#f0c040' },
+  { id: 'onepiece', label: 'One Piece', color: '#d4202a' },
+  { id: 'mtg', label: 'Magic', color: '#7c5cff' },
+];
+
 // Subtitle under a market row: a card shows its set logo (falling back to its symbol), an index
 // shows its leverage or a "soon" badge when it isn't tradeable yet.
 function marketSubtitle(m) {
@@ -17,12 +26,16 @@ function marketSubtitle(m) {
 
 export function SidebarMarkets({ markets, loading, selected, onSelect, collapsed, setCollapsed }) {
   const [tab, setTab] = useState('cards');
+  const [game, setGame] = useState('pokemon');
   const [search, setSearch] = useState('');
   const marks = useRealtime((s) => s.marks);
 
+  const activeGame = GAMES.find((g) => g.id === game) ?? GAMES[0];
   const livePrice = (m) => marks[m.id]?.markE6 ?? m.markE6;
-  const cards = markets.filter((m) => m.kind === 'card');
-  const indices = markets.filter((m) => m.kind === 'index');
+  // the dot switcher scopes both tabs; treat untagged markets as Pokémon (backend is Pokémon-only for now)
+  const inGame = (m) => (m.game ?? 'pokemon') === game;
+  const cards = markets.filter((m) => m.kind === 'card' && inGame(m));
+  const indices = markets.filter((m) => m.kind === 'index' && inGame(m));
   const list = (tab === 'indices' ? indices : cards)
     .filter((m) => m.displayName.toLowerCase().includes(search.toLowerCase()))
     // tradeable markets first, so the gated "Soon" indices sink below the live ones (stable otherwise)
@@ -35,6 +48,22 @@ export function SidebarMarkets({ markets, loading, selected, onSelect, collapsed
         <button className="collapse-btn" onClick={() => setCollapsed(!collapsed)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
           {collapsed ? '▶' : '◀'}
         </button>
+      </div>
+
+      <div className="game-tabs" role="tablist" aria-label="Game">
+        {GAMES.map((g) => (
+          <button
+            key={g.id}
+            role="tab"
+            aria-selected={game === g.id}
+            className={`game-tab-btn ${game === g.id ? 'on' : ''}`}
+            style={{ '--dot': g.color }}
+            onClick={() => setGame(g.id)}
+          >
+            <span className="gdot" />
+            {g.label}
+          </button>
+        ))}
       </div>
 
       <div className="sidebar-tabs">
@@ -59,6 +88,14 @@ export function SidebarMarkets({ markets, loading, selected, onSelect, collapsed
         {loading && (
           <div className="loading-pixel" style={{ padding: '2rem' }}>
             <span /><span /><span />
+          </div>
+        )}
+
+        {!loading && list.length === 0 && (
+          <div className="market-empty">
+            <span className="gdot" style={{ '--dot': activeGame.color }} />
+            {activeGame.label} {tab === 'indices' ? 'indices' : 'markets'} coming soon
+            <small>Pricing integration in progress.</small>
           </div>
         )}
 

@@ -102,6 +102,7 @@
 :root:not([data-theme="arcade"]) .page h2,
 :root:not([data-theme="arcade"]) .page h3,
 :root:not([data-theme="arcade"]) .sidebar-tab-btn,
+:root:not([data-theme="arcade"]) .game-tab-btn,
 :root:not([data-theme="arcade"]) .bottom-tab-btn,
 :root:not([data-theme="arcade"]) .tf-btn,
 :root:not([data-theme="arcade"]) .stat-value { font-weight: var(--weight-strong); }
@@ -132,6 +133,19 @@
 .nav-links { gap: 0.55rem; }
 .nav-link { padding: 0.5rem; }
 :root:not([data-theme="arcade"]) .nav-link { font-size: 0.74rem; }
+/* Narrow desktops: with the chat panel open the navbar only gets (viewport − chat ≈ 280px), so the
+   bigger-root skins (Mythic root 23) and the wide pixel font can overflow the 64px bar. Tighten the nav
+   below 1440px so it never produces a horizontal scrollbar. (1440px+ already fits with chat open.) */
+@media (max-width: 1440px) {
+  .navbar { padding: 0 0.85rem; }
+  .nav-left { gap: 0.8rem; }
+  .nav-brand { font-size: 0.95rem; letter-spacing: 1px; gap: 0.5rem; }
+  .nav-brand img { width: 26px; height: 26px; }
+  .nav-links { gap: 0.2rem; }
+  .nav-link { padding: 0.45rem 0.35rem; letter-spacing: 0.5px; }
+  :root:not([data-theme="arcade"]) .nav-link { font-size: 0.6rem; }
+  [data-theme="arcade"] .nav-link { font-size: 0.55rem; }
+}
 :root:not([data-theme="arcade"]) .market-item-name,
 :root:not([data-theme="arcade"]) .market-item-price { font-size: 0.6rem; }
 :root:not([data-theme="arcade"]) .market-item-set,
@@ -140,6 +154,7 @@
 :root:not([data-theme="arcade"]) .card-header-set,
 :root:not([data-theme="arcade"]) .stat-label { font-size: 0.52rem; }
 :root:not([data-theme="arcade"]) .sidebar-tab-btn,
+:root:not([data-theme="arcade"]) .game-tab-btn,
 :root:not([data-theme="arcade"]) .bottom-tab-btn,
 :root:not([data-theme="arcade"]) .preview-label { font-size: 0.56rem; }
 /* live-chat panel is tuned for the pixel font too — floor it for modern skins (message body first) */
@@ -195,6 +210,7 @@
 :is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .binder-nav-btn,
 :is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .slot-trade-btn,
 :is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .sidebar-tab-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .game-tab-btn,
 :is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .bottom-tab-btn,
 :is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .tf-btn {
   font-family: var(--font-control, var(--font-base)); text-transform: var(--control-tt, none); letter-spacing: var(--control-ls, 0.4px);
