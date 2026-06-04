@@ -17,6 +17,11 @@
   --font-base:    'Press Start 2P', monospace;
   --font-display: 'Press Start 2P', monospace;
   --cb-opacity:   .4;
+  /* shape language — retro defaults (sharp, chunky, pixel weight); skins override in themes.css */
+  --radius:       0px;   /* panels / inputs / boxes */
+  --pill:         0px;   /* buttons / chips */
+  --border-w:     2px;
+  --weight-strong: 400;  /* headings / buttons / tabs */
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -29,6 +34,18 @@ body {
   -webkit-font-smoothing: none;
   image-rendering: pixelated;
 }
+
+/* Themed scrollbars (all scroll areas) — colours + thumb rounding come from the active skin's
+   tokens, so every skin gets a matching scrollbar (retro = sharp, rounded skins = pill thumb). */
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb {
+  background: var(--border); border: 3px solid var(--bg);
+  border-radius: var(--pill); background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+::-webkit-scrollbar-corner { background: var(--bg); }
+html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
 
 /* ─── NAVBAR ─────────────────────────────────── */
 .navbar {

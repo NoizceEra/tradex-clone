@@ -14,9 +14,9 @@ export function ThemePicker() {
 
   return (
     <>
-      <button className="theme-trigger" onClick={() => setOpen((o) => !o)} title="Change skin" aria-label="Change skin">
+      <button className="theme-trigger" onClick={() => setOpen((o) => !o)} title={`Skin: ${active.label}`} aria-label="Change skin">
         <span className="theme-sw" style={{ background: active.sw }} />
-        {active.label} ▾
+        {active.label.split(' - ').pop()} ▾
       </button>
 
       {open && (

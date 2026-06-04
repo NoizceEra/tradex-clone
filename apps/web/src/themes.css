@@ -17,6 +17,7 @@
   --bg:#0a1430; --bg-2:#13245b; --bg-3:#16285f; --border:#27407f; --text:#f3f7ff; --text-muted:#9db0dd;
   --gold:#ffcb05; --accent:#3b6fd4; --accent-lit:#5a8be0; --success:#37d17a; --danger:#ff5d5d;
   --font-base:'Baloo 2',sans-serif; --font-display:'Baloo 2',sans-serif; --cb-opacity:.16; --emblem-ink:var(--gold);
+  --radius:14px; --pill:999px; --border-w:1px; --weight-strong:700; --root-fs:20px;
 }
 /* ---- Pokémon · Voltage (near-black, Baloo + Plex) ---- */
 [data-theme="voltage"] {
@@ -54,13 +55,77 @@
 :root:not([data-theme="arcade"]) body { image-rendering: auto; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 :root:not([data-theme="arcade"]) img { image-rendering: auto; }
 /* Press Start 2P fills the em; modern fonts render smaller at the same rem, so scale the root
-   up so text stays readable. Retro stays at the browser default (16px). */
-:root:not([data-theme="arcade"]) { font-size: 19px; }
+   up so text stays readable. Per-skin via --root-fs (Press Start needs ~1.5x). Retro stays 16px. */
+:root:not([data-theme="arcade"]) { font-size: var(--root-fs, 19px); }
 /* the brand's hard pixel text-shadow only reads on the pixel font */
 :root:not([data-theme="arcade"]) .nav-brand { text-shadow: none; letter-spacing: 0.5px; }
 
 /* headings adopt the skin's display font (retro: same pixel font, no change) */
 .nav-brand, .card-header-name, .preview-label, .page h2, .page h3 { font-family: var(--font-display); }
+
+/* ===== per-skin shape language (radius / pill / border-width / weight) — non-retro only =====
+   Values come from each skin's tokens; a skin that hasn't set them falls back to the :root
+   defaults (= current sharp look), so untouched skins are unchanged. Arcade is excluded. */
+:root:not([data-theme="arcade"]) .nav-link,
+:root:not([data-theme="arcade"]) .chat-toggle,
+:root:not([data-theme="arcade"]) .auth-addr,
+:root:not([data-theme="arcade"]) .side-btn,
+:root:not([data-theme="arcade"]) .place-order-btn,
+:root:not([data-theme="arcade"]) .btn-primary,
+:root:not([data-theme="arcade"]) .btn-secondary,
+:root:not([data-theme="arcade"]) .btn-ghost,
+:root:not([data-theme="arcade"]) .binder-nav-btn,
+:root:not([data-theme="arcade"]) .slot-trade-btn {
+  border-radius: var(--pill); border-width: var(--border-w); font-weight: var(--weight-strong);
+}
+/* the wallet adapter button hard-codes border-radius:0 !important + a 2px border */
+:root:not([data-theme="arcade"]) .wallet-adapter-button { border-radius: var(--pill) !important; border-width: var(--border-w) !important; }
+:root:not([data-theme="arcade"]) .field-input-wrap,
+:root:not([data-theme="arcade"]) .order-info-box,
+:root:not([data-theme="arcade"]) .stat-card,
+:root:not([data-theme="arcade"]) .glass-card { border-radius: var(--radius); border-width: var(--border-w); }
+:root:not([data-theme="arcade"]) .sidebar-search input,
+:root:not([data-theme="arcade"]) .chat-input input,
+:root:not([data-theme="arcade"]) .preview-img { border-radius: var(--radius); }
+:root:not([data-theme="arcade"]) .nav-brand,
+:root:not([data-theme="arcade"]) .card-header-name,
+:root:not([data-theme="arcade"]) .page h2,
+:root:not([data-theme="arcade"]) .page h3,
+:root:not([data-theme="arcade"]) .sidebar-tab-btn,
+:root:not([data-theme="arcade"]) .bottom-tab-btn,
+:root:not([data-theme="arcade"]) .tf-btn,
+:root:not([data-theme="arcade"]) .stat-value { font-weight: var(--weight-strong); }
+
+/* ===== modern-skin readability — Press Start fills its em; proportional fonts read smaller at the
+   same rem, so floor the small text and tighten the navbar so the bigger nav text fits its fixed
+   64px bar. Retro/arcade excluded (keeps its tuned pixel sizes). rem → scales with --root-fs. ===== */
+/* navbar packs a lot (brand + chat + 5 links + skin chip + wallet); tighten spacing for ALL skins
+   so the theme chip fits the bar. Non-retro also bumps the nav font; retro keeps its pixel size. */
+.navbar { padding: 0 1.1rem; }
+.nav-left { gap: 1.2rem; }
+.nav-links { gap: 0.55rem; }
+.nav-link { padding: 0.5rem; }
+:root:not([data-theme="arcade"]) .nav-link { font-size: 0.74rem; }
+:root:not([data-theme="arcade"]) .market-item-name,
+:root:not([data-theme="arcade"]) .market-item-price { font-size: 0.6rem; }
+:root:not([data-theme="arcade"]) .market-item-set,
+:root:not([data-theme="arcade"]) .market-item-change,
+:root:not([data-theme="arcade"]) .sidebar-col-headers,
+:root:not([data-theme="arcade"]) .card-header-set,
+:root:not([data-theme="arcade"]) .stat-label { font-size: 0.52rem; }
+:root:not([data-theme="arcade"]) .sidebar-tab-btn,
+:root:not([data-theme="arcade"]) .bottom-tab-btn,
+:root:not([data-theme="arcade"]) .preview-label { font-size: 0.56rem; }
+
+/* Long/Short: solid-filled active side (the mockup's look) + less vertical padding so the pills
+   aren't so fat. Retro keeps its tinted-outline toggle. */
+:root:not([data-theme="arcade"]) .side-btn { padding: 0.55rem 0.75rem; }
+:root:not([data-theme="arcade"]) .place-order-btn { padding: 0.7rem; }
+/* active side: solid fill, dark text on both (the skins' greens are light, so dark reads best) */
+:root:not([data-theme="arcade"]) .side-btn.buy.active,
+:root:not([data-theme="arcade"]) .side-btn.sell.active { color: #08110b; }
+:root:not([data-theme="arcade"]) .side-btn.buy.active { background: var(--success); }
+:root:not([data-theme="arcade"]) .side-btn.sell.active { background: var(--danger); }
 
 /* =================== card-back background layer =================== */
 .app-container { position: relative; z-index: 1; }   /* sit above the card-back */
@@ -69,7 +134,7 @@
   opacity: var(--cb-opacity, .07); overflow: hidden;
 }
 .skin-emblem {
-  position: absolute; left: 62%; top: 50%; width: 440px; height: 440px;
+  position: absolute; left: 50%; top: 50%; width: 440px; height: 440px;
   transform: translate(-50%,-50%); border-radius: 50%; overflow: hidden;
 }
 /* retro: faint pixel grid (no emblem). Other skins leave the layer transparent for their emblem. */
