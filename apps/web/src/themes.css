@@ -54,7 +54,9 @@
   --bg:#0C0A0F; --bg-2:#16131C; --bg-3:#201B29; --border:#352C42; --text:#ECE6F0; --text-muted:#9489A0;
   --gold:#C9A227; --accent:#7A4FB5; --accent-lit:#9a72d8; --success:#46C99A; --danger:#E0484D;
   --font-base:'EB Garamond',serif; --font-display:'Cinzel',serif; --cb-opacity:.06;
-  --radius:6px; --pill:5px; --border-w:1px; --weight-strong:700; --root-fs:20px; --font-num:'JetBrains Mono',monospace;
+  /* EB Garamond has a small x-height — it reads ~17% smaller than the sans skins at the same px, so
+     scale the whole skin up (root 23 vs 20) to match their apparent size. */
+  --radius:6px; --pill:5px; --border-w:1px; --weight-strong:700; --root-fs:23px; --font-num:'JetBrains Mono',monospace;
   --font-control:var(--font-display); --control-tt:uppercase; --control-ls:0.7px; --brand-tt:uppercase;
 }
 
