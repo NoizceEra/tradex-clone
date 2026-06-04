@@ -10,7 +10,7 @@
  * swirl / mandala), never official artwork.
  * ======================================================================== */
 /* only weights the app actually renders: 400 (body) + 600/700 (headings/brand). */
-@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Bebas+Neue&family=Barlow:wght@400;600;700&family=Cinzel:wght@600;700&family=EB+Garamond:wght@400;600&family=IBM+Plex+Sans:wght@400;600&family=Spectral:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Bebas+Neue&family=Barlow:wght@400;600;700&family=Cinzel:wght@600;700&family=EB+Garamond:wght@400;600&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&family=Spectral:wght@400;600&display=swap');
 
 /* ---- Pokémon · Indigo (navy-blue, Baloo) ---- */
 [data-theme="indigo"] {
@@ -19,11 +19,12 @@
   --font-base:'Baloo 2',sans-serif; --font-display:'Baloo 2',sans-serif; --cb-opacity:.16; --emblem-ink:var(--gold);
   --radius:14px; --pill:999px; --border-w:1px; --weight-strong:700; --root-fs:20px;
 }
-/* ---- Pokémon · Voltage (near-black, Baloo + Plex) ---- */
+/* ---- Pokémon · Voltage (near-black, Baloo display + Plex Sans body + Plex Mono numerals) ---- */
 [data-theme="voltage"] {
   --bg:#0B0D12; --bg-2:#13161F; --bg-3:#1B1F2B; --border:#2A2F3D; --text:#EEF1F6; --text-muted:#8A91A3;
   --gold:#FFCB05; --accent:#3D7DCA; --accent-lit:#5a8be0; --success:#3BE0A0; --danger:#FF5470;
   --font-base:'IBM Plex Sans',sans-serif; --font-display:'Baloo 2',sans-serif; --cb-opacity:.07; --emblem-ink:var(--accent);
+  --radius:14px; --pill:999px; --border-w:1px; --weight-strong:700; --root-fs:20px; --font-num:'IBM Plex Mono',monospace;
 }
 /* ---- One Piece · Bounty (black-maroon, Bebas + Barlow) ---- */
 [data-theme="bounty"] {
@@ -96,6 +97,22 @@
 :root:not([data-theme="arcade"]) .tf-btn,
 :root:not([data-theme="arcade"]) .stat-value { font-weight: var(--weight-strong); }
 
+/* ===== numeric / monetary text adopts the skin's --font-num — a skin can point it at a mono face
+   for a trading-terminal feel (Voltage = IBM Plex Mono). Skins that don't set --font-num fall back to
+   their base font, so untouched skins are unchanged. Arcade excluded. ===== */
+:root:not([data-theme="arcade"]) .market-item-price,
+:root:not([data-theme="arcade"]) .market-item-change,
+:root:not([data-theme="arcade"]) .order-info-row span:last-child,
+:root:not([data-theme="arcade"]) .stat-value,
+:root:not([data-theme="arcade"]) .sc-val,
+:root:not([data-theme="arcade"]) .lb-row:not(.lb-head) .lb-rank,
+:root:not([data-theme="arcade"]) .lb-row:not(.lb-head) .lb-pnl,
+:root:not([data-theme="arcade"]) .lb-row:not(.lb-head) .lb-equity,
+:root:not([data-theme="arcade"]) .lb-row:not(.lb-head) .lb-volume,
+:root:not([data-theme="arcade"]) .field-hint,
+:root:not([data-theme="arcade"]) .modal-sub.val,
+:root:not([data-theme="arcade"]) .positions-table td { font-family: var(--font-num, var(--font-base)); }
+
 /* ===== modern-skin readability — Press Start fills its em; proportional fonts read smaller at the
    same rem, so floor the small text and tighten the navbar so the bigger nav text fits its fixed
    64px bar. Retro/arcade excluded (keeps its tuned pixel sizes). rem → scales with --root-fs. ===== */
@@ -126,6 +143,12 @@
 :root:not([data-theme="arcade"]) .side-btn.sell.active { color: #08110b; }
 :root:not([data-theme="arcade"]) .side-btn.buy.active { background: var(--success); }
 :root:not([data-theme="arcade"]) .side-btn.sell.active { background: var(--danger); }
+
+/* ===== Voltage signature: glossy top-highlight on cards + electric-yellow active tab (its mockup) ===== */
+[data-theme="voltage"] .glass-card,
+[data-theme="voltage"] .stat-card,
+[data-theme="voltage"] .card-preview { box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 8px 24px rgba(0,0,0,.35); }
+[data-theme="voltage"] .sidebar-tab-btn.active { text-shadow: 0 0 9px rgba(255,203,5,.55); }
 
 /* =================== card-back background layer =================== */
 .app-container { position: relative; z-index: 1; }   /* sit above the card-back */
