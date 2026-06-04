@@ -49,11 +49,13 @@
   --font-base:'Spectral',serif; --font-display:'Cinzel',serif; --cb-opacity:.14;
   --radius:5px; --pill:5px; --border-w:1px; --weight-strong:700; --root-fs:20px; --font-num:var(--font-display); --font-control:var(--font-display);
 }
-/* ---- Magic · Mythic (obsidian-violet, Cinzel + EB Garamond) ---- */
+/* ---- Magic · Mythic (obsidian-violet, Cinzel display UPPERCASE + EB Garamond body + JetBrains Mono) ---- */
 [data-theme="mythic"] {
   --bg:#0C0A0F; --bg-2:#16131C; --bg-3:#201B29; --border:#352C42; --text:#ECE6F0; --text-muted:#9489A0;
   --gold:#C9A227; --accent:#7A4FB5; --accent-lit:#9a72d8; --success:#46C99A; --danger:#E0484D;
   --font-base:'EB Garamond',serif; --font-display:'Cinzel',serif; --cb-opacity:.06;
+  --radius:6px; --pill:5px; --border-w:1px; --weight-strong:700; --root-fs:20px; --font-num:'JetBrains Mono',monospace;
+  --font-control:var(--font-display); --control-tt:uppercase; --control-ls:0.7px; --brand-tt:uppercase;
 }
 
 /* Everything below applies to every non-retro skin (arcade = the pixel look from index.css). */
@@ -155,27 +157,32 @@
 [data-theme="voltage"] .card-preview { box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 8px 24px rgba(0,0,0,.35); }
 [data-theme="voltage"] .sidebar-tab-btn.active { text-shadow: 0 0 9px rgba(255,203,5,.55); }
 
+/* ===== Magic · Mythic signature: a faint gold rare-foil glow on cards (its mockup) ===== */
+[data-theme="mythic"] .glass-card,
+[data-theme="mythic"] .stat-card,
+[data-theme="mythic"] .card-preview { box-shadow: 0 10px 28px rgba(0,0,0,.5), 0 0 18px rgba(201,162,39,.22); }
+
 /* ===== display-type skins (One Piece + Magic): controls — nav links, buttons, tabs — take a display
    face and/or are uppercased + tracked (the bold-typography look), unlike Pokémon's pill controls in
    their base font. Per skin: --font-control (control font, defaults to base), --control-tt (case),
    --control-ls (tracking, default 0.4px), --brand-tt (wordmark case). Pokémon (Indigo/Voltage) + Arcade
    aren't in scope, so they're untouched. ===== */
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .nav-link,
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .chat-toggle,
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .auth-addr,
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .side-btn,
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .place-order-btn,
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .btn-primary,
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .btn-secondary,
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .btn-ghost,
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .binder-nav-btn,
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .slot-trade-btn,
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .sidebar-tab-btn,
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .bottom-tab-btn,
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .tf-btn {
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .nav-link,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .chat-toggle,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .auth-addr,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .side-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .place-order-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .btn-primary,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .btn-secondary,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .btn-ghost,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .binder-nav-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .slot-trade-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .sidebar-tab-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .bottom-tab-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .tf-btn {
   font-family: var(--font-control, var(--font-base)); text-transform: var(--control-tt, none); letter-spacing: var(--control-ls, 0.4px);
 }
-:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .nav-brand { text-transform: var(--brand-tt, none); }
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"],[data-theme="mythic"]) .nav-brand { text-transform: var(--brand-tt, none); }
 
 /* =================== card-back background layer =================== */
 .app-container { position: relative; z-index: 1; }   /* sit above the card-back */
