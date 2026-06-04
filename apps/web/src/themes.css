@@ -26,11 +26,12 @@
   --font-base:'IBM Plex Sans',sans-serif; --font-display:'Baloo 2',sans-serif; --cb-opacity:.07; --emblem-ink:var(--accent);
   --radius:14px; --pill:999px; --border-w:1px; --weight-strong:700; --root-fs:20px; --font-num:'IBM Plex Mono',monospace;
 }
-/* ---- One Piece · Bounty (black-maroon, Bebas + Barlow) ---- */
+/* ---- One Piece · Bounty (black-maroon, Bebas display on controls + Barlow body) ---- */
 [data-theme="bounty"] {
   --bg:#140a0c; --bg-2:#231215; --bg-3:#2a161a; --border:#43242a; --text:#f6e9cf; --text-muted:#c2a48f;
   --gold:#f4b41a; --accent:#e23b34; --accent-lit:#e85a52; --success:#4fd17a; --danger:#ff5d52;
   --font-base:'Barlow',sans-serif; --font-display:'Bebas Neue',sans-serif; --cb-opacity:.14;
+  --radius:9px; --pill:7px; --border-w:1px; --weight-strong:700; --root-fs:20px; --font-num:'Bebas Neue',sans-serif;
 }
 /* ---- One Piece · Grand Line (ocean-navy, Bebas + Barlow) ---- */
 [data-theme="grandline"] {
@@ -149,6 +150,25 @@
 [data-theme="voltage"] .stat-card,
 [data-theme="voltage"] .card-preview { box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 8px 24px rgba(0,0,0,.35); }
 [data-theme="voltage"] .sidebar-tab-btn.active { text-shadow: 0 0 9px rgba(255,203,5,.55); }
+
+/* ===== One Piece · Bounty signature: controls in the condensed display face (Bebas), uppercase +
+   tracked — the wanted-poster look. Body text + cards stay in --font-base (Barlow). ===== */
+[data-theme="bounty"] .nav-link,
+[data-theme="bounty"] .chat-toggle,
+[data-theme="bounty"] .auth-addr,
+[data-theme="bounty"] .side-btn,
+[data-theme="bounty"] .place-order-btn,
+[data-theme="bounty"] .btn-primary,
+[data-theme="bounty"] .btn-secondary,
+[data-theme="bounty"] .btn-ghost,
+[data-theme="bounty"] .binder-nav-btn,
+[data-theme="bounty"] .slot-trade-btn,
+[data-theme="bounty"] .sidebar-tab-btn,
+[data-theme="bounty"] .bottom-tab-btn,
+[data-theme="bounty"] .tf-btn {
+  font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.4px;
+}
+[data-theme="bounty"] .nav-brand { text-transform: uppercase; }
 
 /* =================== card-back background layer =================== */
 .app-container { position: relative; z-index: 1; }   /* sit above the card-back */
