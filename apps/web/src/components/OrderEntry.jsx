@@ -210,7 +210,7 @@ export function OrderEntry({ market, onTraded }) {
 
         <div className="order-positions">
           <div className="order-positions-title">Open Positions</div>
-          <OpenPositions positions={positions} onChanged={() => { refresh(); onTraded?.(); }} />
+          <OpenPositions compact positions={positions} onChanged={() => { refresh(); onTraded?.(); }} />
         </div>
       </div>
     </div>

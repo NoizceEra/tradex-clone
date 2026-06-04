@@ -532,7 +532,13 @@ body {
   flex-direction: column;
   height: calc(100vh - 64px);
   overflow-y: auto;
+  overflow-x: hidden; /* the narrow panel never scrolls sideways */
   border-left: 0;
+}
+/* the compact positions table must fit the 280px panel: cap the variable-width symbol cell */
+.order-positions .positions-table th:first-child,
+.order-positions .positions-table td:first-child {
+  max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .card-preview {
