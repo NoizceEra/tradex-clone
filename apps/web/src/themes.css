@@ -32,7 +32,7 @@
   --gold:#f4b41a; --accent:#e23b34; --accent-lit:#e85a52; --success:#4fd17a; --danger:#ff5d52;
   --font-base:'Barlow',sans-serif; --font-display:'Bebas Neue',sans-serif; --cb-opacity:.14;
   --radius:9px; --pill:7px; --border-w:1px; --weight-strong:700; --root-fs:20px; --font-num:'Bebas Neue',sans-serif;
-  --font-control:var(--font-display); /* controls take the condensed display face (wanted-poster) */
+  --font-control:var(--font-display); --control-tt:uppercase; --brand-tt:uppercase; /* condensed display face, all-caps */
 }
 /* ---- One Piece · Grand Line (ocean-navy, Bebas brand + Barlow controls + JetBrains Mono numerals) ---- */
 [data-theme="grandline"] {
@@ -40,12 +40,14 @@
   --gold:#E0A82E; --accent:#C8453B; --accent-lit:#d65b51; --success:#4FB477; --danger:#D9544D;
   --font-base:'Barlow',sans-serif; --font-display:'Bebas Neue',sans-serif; --cb-opacity:.06;
   --radius:8px; --pill:6px; --border-w:1px; --weight-strong:700; --root-fs:20px; --font-num:'JetBrains Mono',monospace;
+  --control-tt:uppercase; --brand-tt:uppercase; /* Barlow controls, all-caps (no --font-control) */
 }
-/* ---- Magic · Antiquity (obsidian-brown, Cinzel + Spectral) ---- */
+/* ---- Magic · Antiquity (obsidian-brown, Cinzel display + Spectral body; serif throughout, Title Case) ---- */
 [data-theme="antiquity"] {
   --bg:#120e09; --bg-2:#1d1812; --bg-3:#251e15; --border:#352a1c; --text:#ece3d0; --text-muted:#a8997f;
   --gold:#c8aa6e; --accent:#8a6cff; --accent-lit:#a084ff; --success:#5bbf86; --danger:#d4574e;
   --font-base:'Spectral',serif; --font-display:'Cinzel',serif; --cb-opacity:.14;
+  --radius:5px; --pill:5px; --border-w:1px; --weight-strong:700; --root-fs:20px; --font-num:var(--font-display); --font-control:var(--font-display);
 }
 /* ---- Magic · Mythic (obsidian-violet, Cinzel + EB Garamond) ---- */
 [data-theme="mythic"] {
@@ -153,25 +155,27 @@
 [data-theme="voltage"] .card-preview { box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 8px 24px rgba(0,0,0,.35); }
 [data-theme="voltage"] .sidebar-tab-btn.active { text-shadow: 0 0 9px rgba(255,203,5,.55); }
 
-/* ===== One Piece family (Bounty + Grand Line): controls are UPPERCASE + tracked. The control font is
-   --font-control — Bounty points it at the condensed display face (Bebas, wanted-poster); Grand Line
-   leaves it unset so controls stay Barlow. Body text + cards stay in --font-base. ===== */
-:is([data-theme="bounty"],[data-theme="grandline"]) .nav-link,
-:is([data-theme="bounty"],[data-theme="grandline"]) .chat-toggle,
-:is([data-theme="bounty"],[data-theme="grandline"]) .auth-addr,
-:is([data-theme="bounty"],[data-theme="grandline"]) .side-btn,
-:is([data-theme="bounty"],[data-theme="grandline"]) .place-order-btn,
-:is([data-theme="bounty"],[data-theme="grandline"]) .btn-primary,
-:is([data-theme="bounty"],[data-theme="grandline"]) .btn-secondary,
-:is([data-theme="bounty"],[data-theme="grandline"]) .btn-ghost,
-:is([data-theme="bounty"],[data-theme="grandline"]) .binder-nav-btn,
-:is([data-theme="bounty"],[data-theme="grandline"]) .slot-trade-btn,
-:is([data-theme="bounty"],[data-theme="grandline"]) .sidebar-tab-btn,
-:is([data-theme="bounty"],[data-theme="grandline"]) .bottom-tab-btn,
-:is([data-theme="bounty"],[data-theme="grandline"]) .tf-btn {
-  font-family: var(--font-control, var(--font-base)); text-transform: uppercase; letter-spacing: 0.4px;
+/* ===== display-type skins (One Piece + Magic): controls — nav links, buttons, tabs — take a display
+   face and/or are uppercased + tracked (the bold-typography look), unlike Pokémon's pill controls in
+   their base font. Per skin: --font-control (control font, defaults to base), --control-tt (case),
+   --control-ls (tracking, default 0.4px), --brand-tt (wordmark case). Pokémon (Indigo/Voltage) + Arcade
+   aren't in scope, so they're untouched. ===== */
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .nav-link,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .chat-toggle,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .auth-addr,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .side-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .place-order-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .btn-primary,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .btn-secondary,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .btn-ghost,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .binder-nav-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .slot-trade-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .sidebar-tab-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .bottom-tab-btn,
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .tf-btn {
+  font-family: var(--font-control, var(--font-base)); text-transform: var(--control-tt, none); letter-spacing: var(--control-ls, 0.4px);
 }
-:is([data-theme="bounty"],[data-theme="grandline"]) .nav-brand { text-transform: uppercase; }
+:is([data-theme="bounty"],[data-theme="grandline"],[data-theme="antiquity"]) .nav-brand { text-transform: var(--brand-tt, none); }
 
 /* =================== card-back background layer =================== */
 .app-container { position: relative; z-index: 1; }   /* sit above the card-back */
