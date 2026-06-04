@@ -140,6 +140,21 @@
 :root:not([data-theme="arcade"]) .sidebar-tab-btn,
 :root:not([data-theme="arcade"]) .bottom-tab-btn,
 :root:not([data-theme="arcade"]) .preview-label { font-size: 0.56rem; }
+/* live-chat panel is tuned for the pixel font too — floor it for modern skins (message body first) */
+:root:not([data-theme="arcade"]) .chat-title,
+:root:not([data-theme="arcade"]) .chat-collapse { font-size: 0.66rem; }
+:root:not([data-theme="arcade"]) .chat-text,
+:root:not([data-theme="arcade"]) .chat-input input,
+:root:not([data-theme="arcade"]) .chat-name-row input { font-size: 0.62rem; }
+:root:not([data-theme="arcade"]) .chat-handle,
+:root:not([data-theme="arcade"]) .chat-empty,
+:root:not([data-theme="arcade"]) .chat-signin,
+:root:not([data-theme="arcade"]) .chat-quote,
+:root:not([data-theme="arcade"]) .chat-reply-btn,
+:root:not([data-theme="arcade"]) .chat-reply-banner { font-size: 0.56rem; }
+:root:not([data-theme="arcade"]) .chat-time,
+:root:not([data-theme="arcade"]) .chat-name-label,
+:root:not([data-theme="arcade"]) .chat-badge { font-size: 0.5rem; }
 
 /* Long/Short: solid-filled active side (the mockup's look) + less vertical padding so the pills
    aren't so fat. Retro keeps its tinted-outline toggle. */
