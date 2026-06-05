@@ -18,7 +18,8 @@ export type AccountType =
   | 'FEE_REVENUE'
   | 'FUNDING_POOL'
   | 'PNL_CLEARING'
-  | 'FAUCET_SOURCE';
+  | 'FAUCET_SOURCE'
+  | 'TREASURY_USDC';
 
 /** System (house) accounts — one row each, user_id NULL. */
 export const SYSTEM_ACCOUNT_TYPES: AccountType[] = [
@@ -28,6 +29,10 @@ export const SYSTEM_ACCOUNT_TYPES: AccountType[] = [
   'FUNDING_POOL',
   'PNL_CLEARING',
   'FAUCET_SOURCE',
+  // Real-funds custody mirror (docs/real-funds-custody-plan.md): the only account real deposits/
+  // withdrawals touch. Its negative balance == total internal claims; the chain reconciler asserts
+  // on-chain treasury USDC >= |TREASURY_USDC| (proof of reserves). Unused until REAL_FUNDS paths land.
+  'TREASURY_USDC',
 ];
 
 export interface Entry {

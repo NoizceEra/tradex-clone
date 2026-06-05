@@ -310,3 +310,53 @@ CREATE TABLE IF NOT EXISTS liquidations (
   txn_id                TEXT,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- =========================================================================
+-- Real-funds custody (P0 foundation — tables only; deposit/withdraw paths
+-- land behind REAL_FUNDS in later phases). See docs/real-funds-custody-plan.md.
+-- =========================================================================
+-- One HD-derived Solana deposit address per user (master seed lives in KMS, never here).
+CREATE TABLE IF NOT EXISTS deposit_addresses (
+  user_id          TEXT PRIMARY KEY REFERENCES users(id),
+  address          TEXT UNIQUE NOT NULL,
+  derivation_index INT  UNIQUE NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Inbound deposits. onchain_sig UNIQUE makes crediting idempotent (re-scans can't double-credit).
+CREATE TABLE IF NOT EXISTS deposits (
+  id               TEXT PRIMARY KEY,
+  user_id          TEXT NOT NULL REFERENCES users(id),
+  onchain_sig      TEXT UNIQUE NOT NULL,             -- inbound transfer signature
+  asset            TEXT NOT NULL,                    -- 'USDC' | 'SOL'
+  amount_in_raw    BIGINT NOT NULL,                  -- raw units of `asset` (lamports / micro-USDC)
+  usdc_credited_e6 BIGINT,                           -- ACTUAL credited proceeds (post-swap); never clamped
+  swap_sig         TEXT,                             -- Jupiter swap signature (SOL deposits only)
+  status           TEXT NOT NULL DEFAULT 'detected', -- detected|swapping|swept|credited
+  txn_id           TEXT,                             -- ledger txn id once credited
+  observed_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  credited_at      TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_deposits_user   ON deposits(user_id, observed_at);
+CREATE INDEX IF NOT EXISTS idx_deposits_status ON deposits(status);
+
+-- Outbound withdrawals. Two-phase: ledger debited at `signed`, BEFORE broadcast; signed_tx +
+-- onchain_sig persisted at signing so a crash can only re-broadcast the SAME tx (idempotent),
+-- never double-pay. Reversed only when the sig is definitively absent + abandoned.
+CREATE TABLE IF NOT EXISTS withdrawals (
+  id              TEXT PRIMARY KEY,
+  user_id         TEXT NOT NULL REFERENCES users(id),
+  dest_address    TEXT NOT NULL,
+  amount_e6       BIGINT NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'requested', -- requested|signed|broadcast|confirmed|failed|reversed
+  signed_tx       TEXT,                              -- base64 signed tx (persisted before broadcast)
+  onchain_sig     TEXT UNIQUE,                       -- known at signing time
+  idempotency_key TEXT UNIQUE NOT NULL,
+  txn_id          TEXT,                              -- ledger debit txn id (two-phase)
+  reason          TEXT,                              -- failure / reversal note
+  requested_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  signed_at       TIMESTAMPTZ,
+  confirmed_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_withdrawals_user   ON withdrawals(user_id, requested_at);
+CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON withdrawals(status);

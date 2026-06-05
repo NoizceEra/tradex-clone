@@ -64,6 +64,20 @@ export const config = {
   liqFeeBps: num('LIQ_FEE_BPS', 100), // 1% liquidation penalty -> insurance fund
   liquidationSweepMs: num('LIQUIDATION_SWEEP_MS', 5_000),
   oracleStaleMs: num('ORACLE_STALE_MS', 36 * 60 * 60 * 1000), // halt a market if no fresh print
+
+  // --- Real-funds custody (P0 scaffolding; unused until the REAL_FUNDS paths land) ---
+  // See docs/real-funds-custody-plan.md. Env-only; keys/seeds are never hardcoded — the HD master
+  // seed lives in KMS and only its reference is configured here.
+  solanaRpcUrl: process.env.SOLANA_RPC_URL ?? 'https://api.devnet.solana.com',
+  usdcMint: process.env.USDC_MINT ?? '', // per-network SPL mint
+  treasuryPubkey: process.env.TREASURY_PUBKEY ?? '', // Squads multisig (cold) address
+  depositSeedKmsRef: process.env.DEPOSIT_SEED_KMS_REF ?? '',
+  jupiterBase: process.env.JUPITER_BASE ?? 'https://quote-api.jup.ag',
+  swapSlippageBps: num('SWAP_SLIPPAGE_BPS', 100), // 1% max slippage on SOL->USDC deposit swaps
+  minDepositUsd: num('MIN_DEPOSIT_USD', 1), // dust below this is ignored (uneconomic to sweep)
+  minWithdrawalUsd: num('MIN_WITHDRAWAL_USD', 5),
+  withdrawalDailyCapUsd: num('WITHDRAWAL_DAILY_CAP_USD', 10_000), // per-user velocity cap
+  hotWalletMaxUsd: num('HOT_WALLET_MAX_USD', 25_000), // hot float cap; excess swept to cold
 };
 
 if (config.realFunds) {
