@@ -37,20 +37,29 @@ test('ingest seeds card markets, indices, oracle prints and marks', async () => 
   assert.equal(r.indices, 2); // top-100 + top-250 (graded/sealed are gated)
 
   const markets = await listMarketsWithData(db);
-  // 4 cards + 4 index markets (top-100, top-250, graded, sealed)
-  assert.equal(markets.length, 8);
+  // 4 cards + 4 Pokémon indices (top-100, top-250, graded, sealed) + 2 One Piece + 2 MTG gated indices
+  assert.equal(markets.length, 12);
 
   const chari = markets.find((m) => m.symbol === 'sv-1')!;
   assert.equal(chari.kind, 'card');
+  assert.equal(chari.game, 'pokemon'); // ingested cards are tagged with their game
   assert.equal(Number(chari.markE6) / 1_000_000, 1200); // mark == index when skew = 0
 
-  const top100 = markets.find((m) => m.indexSlug === 'top-100')!;
+  // slugs repeat per game — pick the Pokémon one explicitly
+  const top100 = markets.find((m) => m.indexSlug === 'top-100' && m.game === 'pokemon')!;
   assert.equal(top100.tradeable, true);
   assert.ok(top100.markE6 && Number(top100.markE6) / 1_000_000 >= 1000, 'index starts at its base value of 1000');
 
   const graded = markets.find((m) => m.indexSlug === 'graded')!;
   assert.equal(graded.tradeable, false);
   assert.equal(graded.markE6, null); // gated: listed, no price/mark
+
+  // game dimension: One Piece / MTG indices are listed but gated until scrydex card data lands
+  for (const game of ['onepiece', 'mtg']) {
+    const gameIdx = markets.filter((m) => m.game === game);
+    assert.equal(gameIdx.length, 2, `${game} lists top-100 + top-250`);
+    assert.ok(gameIdx.every((m) => m.kind === 'index' && !m.tradeable && m.markE6 === null), `${game} indices are gated`);
+  }
 });
 
 test('candles endpoint returns a populated, deterministic series', async () => {
