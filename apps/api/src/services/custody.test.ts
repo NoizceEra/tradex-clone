@@ -30,15 +30,24 @@ async function newUser(): Promise<string> {
   return id;
 }
 
+/** Everything in `list` after the `until` signature, plus the new high-water mark — mirrors the
+ *  cursor semantics of the live impl's backward pagination. */
+function pageSince<T extends { sig: string }>(list: T[], until: string | null) {
+  const start = until ? list.findIndex((t) => t.sig === until) + 1 : 0;
+  return { transfers: list.slice(start), highWater: list.length ? list[list.length - 1].sig : until };
+}
+
 /** In-memory DepositChain: USDC + SOL inbound queues, simulated balances, swap + sweep logs. */
 function fakeChain() {
   const chain = {
+    supportsSolSwaps: true,
     inbound: new Map<string, { sig: string; amountE6: bigint }[]>(),
     inboundSolQ: new Map<string, { sig: string; lamports: bigint }[]>(),
     balances: new Map<string, bigint>(), // USDC on the deposit wallet
     solBalances: new Map<string, bigint>(),
     sweeps: [] as { from: string; amountE6: bigint }[],
     swaps: [] as { from: string; lamports: bigint }[],
+    usdcUntils: new Map<string, (string | null)[]>(), // per address: the cursor passed on each USDC scan
     failSweeps: false,
     /** queue an inbound USDC transfer + land the funds on the simulated deposit wallet */
     deposit(address: string, sig: string, amountE6: bigint) {
@@ -50,11 +59,12 @@ function fakeChain() {
       chain.inboundSolQ.set(address, [...(chain.inboundSolQ.get(address) ?? []), { sig, lamports }]);
       chain.solBalances.set(address, (chain.solBalances.get(address) ?? 0n) + lamports);
     },
-    async inboundUsdc(address: string): Promise<{ sig: string; amountE6: bigint }[]> {
-      return chain.inbound.get(address) ?? [];
+    async inboundUsdc(address: string, _known: Set<string>, until: string | null) {
+      chain.usdcUntils.set(address, [...(chain.usdcUntils.get(address) ?? []), until]);
+      return pageSince(chain.inbound.get(address) ?? [], until);
     },
-    async inboundSol(address: string): Promise<{ sig: string; lamports: bigint }[]> {
-      return chain.inboundSolQ.get(address) ?? [];
+    async inboundSol(address: string, _known: Set<string>, until: string | null) {
+      return pageSince(chain.inboundSolQ.get(address) ?? [], until);
     },
     async solBalance(address: string): Promise<bigint> {
       return chain.solBalances.get(address) ?? 0n;
@@ -143,7 +153,8 @@ test('crediting is idempotent across re-scans and direct retries; new sigs still
   chain.deposit(addr.address, 'sig-a', amount);
 
   assert.equal((await scanDeposits(db, chain)).credited, 1);
-  // the fake still reports the same inbound transfer — a re-scan must not double-credit
+  // a re-scan must not double-credit (cursor skips processed history; UNIQUE(sig, asset) +
+  // the status guard would stop a re-delivered transfer all the same)
   assert.equal((await scanDeposits(db, chain)).credited, 0);
   assert.equal((await getUserBalances(db, u)).availableUusdc, amount);
   assert.equal(chain.sweeps.length, 1); // balance is empty — nothing more to sweep
@@ -245,7 +256,7 @@ test('an unrecorded swap cannot strand or double-credit: proceeds credit via the
   assert.equal((await reconcile(db)).ok, true);
 });
 
-test('dust below the minimum deposit is ignored', async () => {
+test('dust below the minimum is recorded as terminal ignored — never credited, never re-parsed', async () => {
   const u = await newUser();
   const addr = await getOrCreateDepositAddress(db, u);
   const chain = fakeChain();
@@ -253,8 +264,66 @@ test('dust below the minimum deposit is ignored', async () => {
 
   assert.equal((await scanDeposits(db, chain)).credited, 0);
   assert.equal((await getUserBalances(db, u)).availableUusdc, 0n);
-  const rows = await db.query(`SELECT id FROM deposits WHERE onchain_sig = 'sig-dust'`);
-  assert.equal(rows.rows.length, 0); // not even recorded
+  const row = (
+    await db.query<{ id: string; status: string }>(`SELECT id, status FROM deposits WHERE onchain_sig = 'sig-dust'`)
+  ).rows[0];
+  assert.equal(row.status, 'ignored'); // terminal: in knownSigs forever, so it's never parsed again
+
+  // a re-scan neither credits it nor re-records it; a direct credit attempt is a no-op
+  assert.equal((await scanDeposits(db, chain)).credited, 0);
+  assert.equal(await creditDeposit(db, row.id), null);
+  assert.equal((await getUserBalances(db, u)).availableUusdc, 0n);
+  assert.equal((await db.query(`SELECT id FROM deposits WHERE onchain_sig = 'sig-dust'`)).rows.length, 1);
+});
+
+test('the scan cursor advances past processed history and is passed back to the chain', async () => {
+  const u = await newUser();
+  const addr = await getOrCreateDepositAddress(db, u);
+  const chain = fakeChain();
+  chain.deposit(addr.address, 'sig-cur-1', 10n * 1_000_000n);
+
+  await scanDeposits(db, chain);
+  chain.deposit(addr.address, 'sig-cur-2', 20n * 1_000_000n);
+  await scanDeposits(db, chain);
+  await scanDeposits(db, chain);
+
+  // pass 1 scanned from scratch; pass 2 resumed from sig-cur-1; pass 3 from sig-cur-2 — old
+  // history is never re-fetched, so a long backlog can't evict an unprocessed deposit
+  assert.deepEqual(chain.usdcUntils.get(addr.address), [null, 'sig-cur-1', 'sig-cur-2']);
+  const cur = (
+    await db.query<{ high_sig: string }>(
+      `SELECT high_sig FROM deposit_scan_cursors WHERE address = $1 AND asset = 'USDC'`,
+      [addr.address],
+    )
+  ).rows[0];
+  assert.equal(cur.high_sig, 'sig-cur-2');
+  assert.equal((await getUserBalances(db, u)).availableUusdc, 30n * 1_000_000n); // both credited once
+});
+
+test('SOL deposits are parked (not retry-spammed) on networks without a swap route, and self-heal', async () => {
+  const u = await newUser();
+  const addr = await getOrCreateDepositAddress(db, u);
+  const chain = fakeChain();
+  chain.supportsSolSwaps = false; // devnet: Jupiter has no route
+  chain.depositSol(addr.address, 'sig-park-1', LAMPORTS_PER_SOL);
+
+  // recorded but parked: no swap attempts on any pass, no errors, row stays 'detected'
+  assert.equal((await scanDeposits(db, chain)).credited, 0);
+  assert.equal((await scanDeposits(db, chain)).credited, 0);
+  assert.equal(chain.swaps.length, 0);
+  const parked = (
+    await db.query<{ status: string }>(`SELECT status FROM deposits WHERE onchain_sig = 'sig-park-1'`)
+  ).rows[0];
+  assert.equal(parked.status, 'detected');
+
+  // a swap-capable network picks the parked row up with no other intervention
+  chain.supportsSolSwaps = true;
+  assert.equal((await scanDeposits(db, chain)).credited, 0); // swap pass
+  assert.equal(chain.swaps.length, 1);
+  assert.equal((await scanDeposits(db, chain)).credited, 1); // proceeds credit
+  const expected = ((LAMPORTS_PER_SOL - FEE_RESERVE) * FAKE_RATE_E6_PER_SOL) / LAMPORTS_PER_SOL;
+  assert.equal((await getUserBalances(db, u)).availableUusdc, expected);
+  assert.equal((await reconcile(db)).ok, true);
 });
 
 after(async () => {

@@ -10,6 +10,8 @@ function num(name: string, fallback: number): number {
   return v ? Number(v) : fallback;
 }
 
+const MAINNET_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+
 export const config = {
   env: process.env.NODE_ENV ?? 'development',
   port: num('PORT', 4000),
@@ -95,6 +97,12 @@ export const config = {
   depositSeedKmsRef: process.env.DEPOSIT_SEED_KMS_REF ?? '',
   jupiterBase: process.env.JUPITER_BASE ?? 'https://quote-api.jup.ag',
   swapSlippageBps: num('SWAP_SLIPPAGE_BPS', 100), // 1% max slippage on SOL->USDC deposit swaps
+  // SOL->USDC deposit swaps need a Jupiter route, which only exists on MAINNET. Off-route networks
+  // (devnet) park SOL deposits as 'detected' rows — no swap attempts, no retry spam — until a
+  // swap-capable network is configured (the parked rows then swap + credit on the next scan).
+  solSwapsEnabled: process.env.SOL_SWAPS_ENABLED
+    ? process.env.SOL_SWAPS_ENABLED === 'true'
+    : (process.env.USDC_MINT ?? '') === MAINNET_USDC,
   minDepositUsd: num('MIN_DEPOSIT_USD', 1), // dust below this is ignored (uneconomic to sweep)
   minWithdrawalUsd: num('MIN_WITHDRAWAL_USD', 5),
   withdrawalDailyCapUsd: num('WITHDRAWAL_DAILY_CAP_USD', 10_000), // per-user velocity cap
@@ -122,7 +130,6 @@ if (config.realFunds) {
   }
   // MAINNET stays hard-gated until audit + KYC/AML + geofence (custody P4 in
   // docs/real-funds-custody-plan.md). Devnet/testnet runs need no override.
-  const MAINNET_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
   const mainnetish = /mainnet/i.test(config.solanaRpcUrl) || config.usdcMint === MAINNET_USDC;
   if (mainnetish && process.env.ALLOW_MAINNET_FUNDS !== 'true') {
     throw new Error(

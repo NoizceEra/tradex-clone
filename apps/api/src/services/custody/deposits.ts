@@ -42,6 +42,15 @@ export interface InboundSol {
   lamports: bigint;
 }
 
+/** One scan of an address's inbound history since the caller's high-water mark. */
+export interface InboundPage<T> {
+  /** New finalized inbound transfers, oldest first. */
+  transfers: T[];
+  /** The new high-water signature to persist — the caller's `until` unchanged when nothing new
+   *  was seen OR the impl couldn't complete pagination (never advances past unfetched history). */
+  highWater: string | null;
+}
+
 export interface SweepResult {
   sig: string;
   amountE6: bigint;
@@ -52,10 +61,14 @@ export type CustodyLog = { error: (obj: unknown, msg: string) => void };
 
 /** Chain-facing surface, injectable for tests (same pattern as oracle.ts's CardFetcher). */
 export interface DepositChain {
-  /** Finalized inbound USDC transfers to `address`, oldest first. `knownSigs` lets impls skip work. */
-  inboundUsdc(address: string, knownSigs: Set<string>): Promise<InboundUsdc[]>;
-  /** Finalized inbound native-SOL transfers to `address`, oldest first. */
-  inboundSol(address: string, knownSigs: Set<string>): Promise<InboundSol[]>;
+  /** Whether this network can route SOL->USDC swaps (Jupiter is mainnet-only). When false the
+   *  scanner records SOL deposits but parks them — no swap attempts, no retry spam. */
+  supportsSolSwaps: boolean;
+  /** Finalized inbound USDC transfers to `address` newer than the `until` signature, oldest
+   *  first. `knownSigs` lets impls skip per-sig work for already-recorded transfers. */
+  inboundUsdc(address: string, knownSigs: Set<string>, until: string | null): Promise<InboundPage<InboundUsdc>>;
+  /** Finalized inbound native-SOL transfers to `address` newer than `until`, oldest first. */
+  inboundSol(address: string, knownSigs: Set<string>, until: string | null): Promise<InboundPage<InboundSol>>;
   /** Finalized native-SOL balance of `address`. */
   solBalance(address: string): Promise<bigint>;
   /** Swap `lamports` of the deposit wallet's SOL into USDC in place (Jupiter; the wallet pays its
@@ -80,7 +93,7 @@ export async function creditDeposit(db: Db, depositId: string): Promise<string |
       [depositId],
     );
     const d = r.rows[0];
-    if (!d || d.status === 'credited') return null; // unknown or already credited (idempotent)
+    if (!d || d.status !== 'detected') return null; // unknown, already credited, or terminal dust (idempotent)
     if (d.asset !== 'USDC') return null; // SOL rows never credit — their swapped proceeds do
     const amount = BigInt(d.amt); // USDC raw units == micro-USDC
 
@@ -103,11 +116,25 @@ export async function creditDeposit(db: Db, depositId: string): Promise<string |
   });
 }
 
+/** Persist an address+asset scan high-water mark. Written AFTER the pass's deposits rows so a
+ *  crash between the two re-scans (idempotent) rather than strands. Same-value upserts are
+ *  harmless (and keep updated_at = "last scanned"). */
+async function saveCursor(db: Db, address: string, asset: string, sig: string | null): Promise<void> {
+  if (!sig) return;
+  await db.query(
+    `INSERT INTO deposit_scan_cursors(address, asset, high_sig) VALUES($1, $2, $3)
+     ON CONFLICT(address, asset) DO UPDATE SET high_sig = EXCLUDED.high_sig, updated_at = now()`,
+    [address, asset, sig],
+  );
+}
+
 /**
  * One scan pass over every deposit address:
- *   1. record new finalized inbound USDC + SOL (idempotent by (signature, asset));
- *   2. swap pending SOL into USDC in place (balance-based, self-healing — see header);
- *   3. credit every uncredited USDC row (re-entrant: also resumes rows stranded by a crash);
+ *   1. record new finalized inbound USDC + SOL since the persisted high-water sig (idempotent by
+ *      (signature, asset); sub-minimum dust is recorded as terminal 'ignored', never re-parsed);
+ *   2. swap pending SOL into USDC in place (balance-based, self-healing — see header; skipped
+ *      entirely on networks without a swap route, parking the rows instead of retry-spamming);
+ *   3. credit every detected USDC row (re-entrant: also resumes rows stranded by a crash);
  *   4. sweep the wallet's USDC to the treasury (retried next pass on failure).
  * Per-address failures are logged and don't stop the pass; everything is safe to re-run.
  */
@@ -123,25 +150,41 @@ export async function scanDeposits(
 
   for (const a of addrs.rows) {
     try {
-      // 1) detect (signatures already recorded for this user are skipped per asset)
+      // 1) detect (signatures already recorded for this user are skipped per asset; the persisted
+      //    high-water mark bounds how far back the chain impl must page)
       const known = await db.query<{ onchain_sig: string; asset: string }>(
         `SELECT onchain_sig, asset FROM deposits WHERE user_id = $1`,
         [a.user_id],
       );
       const knownUsdc = new Set(known.rows.filter((r) => r.asset === 'USDC').map((r) => r.onchain_sig));
       const knownSol = new Set(known.rows.filter((r) => r.asset === 'SOL').map((r) => r.onchain_sig));
+      const curRows = await db.query<{ asset: string; high_sig: string }>(
+        `SELECT asset, high_sig FROM deposit_scan_cursors WHERE address = $1`,
+        [a.address],
+      );
+      const cursor = (asset: string) => curRows.rows.find((c) => c.asset === asset)?.high_sig ?? null;
 
-      for (const t of await chain.inboundUsdc(a.address, knownUsdc)) {
-        if (knownUsdc.has(t.sig)) continue;
-        if (t.amountE6 < minDepositE6()) continue; // dust: uneconomic to sweep (and anti-dusting)
+      // the two asset scans hit different chain addresses (token ATA vs wallet) — fetch concurrently
+      const [usdcPage, solPage] = await Promise.all([
+        chain.inboundUsdc(a.address, knownUsdc, cursor('USDC')),
+        chain.inboundSol(a.address, knownSol, cursor('SOL')),
+      ]);
+
+      for (const t of usdcPage.transfers) {
+        if (knownUsdc.has(t.sig)) continue; // redundant-by-contract (impls filter knownSigs) — belt and suspenders
+        // dust below the minimum is terminal 'ignored': uneconomic to credit (anti-dusting), and
+        // recording it means it is never fetched or parsed again
+        const status = t.amountE6 < minDepositE6() ? 'ignored' : 'detected';
         await db.query(
           `INSERT INTO deposits(id, user_id, onchain_sig, asset, amount_in_raw, status)
-           VALUES($1, $2, $3, 'USDC', $4, 'detected')
+           VALUES($1, $2, $3, 'USDC', $4, $5)
            ON CONFLICT(onchain_sig, asset) DO NOTHING`,
-          [randomUUID(), a.user_id, t.sig, t.amountE6.toString()],
+          [randomUUID(), a.user_id, t.sig, t.amountE6.toString(), status],
         );
       }
-      for (const t of await chain.inboundSol(a.address, knownSol)) {
+      await saveCursor(db, a.address, 'USDC', usdcPage.highWater);
+
+      for (const t of solPage.transfers) {
         if (knownSol.has(t.sig)) continue;
         await db.query(
           `INSERT INTO deposits(id, user_id, onchain_sig, asset, amount_in_raw, status)
@@ -150,38 +193,42 @@ export async function scanDeposits(
           [randomUUID(), a.user_id, t.sig, t.lamports.toString()],
         );
       }
+      await saveCursor(db, a.address, 'SOL', solPage.highWater);
 
       // 2) swap pending SOL -> USDC in place (balance-based). If the balance is at/below the fee
       //    reserve there is nothing meaningfully swappable — either a prior (unrecorded) swap
       //    already converted it (its proceeds credit via the USDC path) or it's true dust — so
-      //    the rows are closed out either way.
-      const solPending = await db.query<{ id: string }>(
-        `SELECT id FROM deposits WHERE user_id = $1 AND asset = 'SOL' AND status IN ('detected', 'swapping')`,
-        [a.user_id],
-      );
-      if (solPending.rows.length > 0) {
-        const balance = await chain.solBalance(a.address);
-        if (balance > SOL_FEE_RESERVE_LAMPORTS * 2n) {
-          for (const { id } of solPending.rows) {
-            await db.query(`UPDATE deposits SET status = 'swapping' WHERE id = $1`, [id]);
-          }
-          const sig = await chain.swapSolToUsdc(
-            deriveDepositKeypair(a.derivation_index),
-            balance - SOL_FEE_RESERVE_LAMPORTS,
-          );
-          for (const { id } of solPending.rows) {
-            await db.query(`UPDATE deposits SET status = 'swapped', swap_sig = $2 WHERE id = $1`, [id, sig]);
-          }
-        } else {
-          for (const { id } of solPending.rows) {
-            await db.query(`UPDATE deposits SET status = 'swapped' WHERE id = $1`, [id]);
+      //    the rows are closed out either way. On networks without a swap route the step is
+      //    skipped wholesale: rows park at 'detected' and self-heal when a route exists.
+      if (chain.supportsSolSwaps) {
+        const solPending = await db.query<{ id: string }>(
+          `SELECT id FROM deposits WHERE user_id = $1 AND asset = 'SOL' AND status IN ('detected', 'swapping')`,
+          [a.user_id],
+        );
+        if (solPending.rows.length > 0) {
+          const balance = await chain.solBalance(a.address);
+          if (balance > SOL_FEE_RESERVE_LAMPORTS * 2n) {
+            for (const { id } of solPending.rows) {
+              await db.query(`UPDATE deposits SET status = 'swapping' WHERE id = $1`, [id]);
+            }
+            const sig = await chain.swapSolToUsdc(
+              deriveDepositKeypair(a.derivation_index),
+              balance - SOL_FEE_RESERVE_LAMPORTS,
+            );
+            for (const { id } of solPending.rows) {
+              await db.query(`UPDATE deposits SET status = 'swapped', swap_sig = $2 WHERE id = $1`, [id, sig]);
+            }
+          } else {
+            for (const { id } of solPending.rows) {
+              await db.query(`UPDATE deposits SET status = 'swapped' WHERE id = $1`, [id]);
+            }
           }
         }
       }
 
-      // 3) credit (USDC rows only; re-entrant)
+      // 3) credit (detected USDC rows only; re-entrant — 'ignored' dust never credits)
       const pending = await db.query<{ id: string }>(
-        `SELECT id FROM deposits WHERE user_id = $1 AND asset = 'USDC' AND status <> 'credited'`,
+        `SELECT id FROM deposits WHERE user_id = $1 AND asset = 'USDC' AND status = 'detected'`,
         [a.user_id],
       );
       for (const p of pending.rows) {

@@ -10,6 +10,9 @@ import type { Db } from './db/client.ts';
 import type { FastifyBaseLogger } from 'fastify';
 import { config } from './config.ts';
 
+// The oracle/funding/liquidation loops below intentionally stay on plain setInterval: their
+// bodies are fast local-DB work (or far slower than their cadence), so overlap is a non-issue.
+// The custody workers use chainLoop — slow RPC passes there must never stack (security F3).
 function startOracleLoop(db: Db, log: FastifyBaseLogger) {
   const run = () =>
     ingest(db)
@@ -32,17 +35,32 @@ function startFundingLoop(db: Db, log: FastifyBaseLogger) {
   setInterval(() => void run(), config.fundingIntervalMs);
 }
 
+/** Self-chained worker loop: the next pass is scheduled only after the current one finishes, so
+ *  slow RPC passes can never overlap/stack the way a setInterval-driven loop would. */
+function chainLoop(run: () => Promise<void>, firstDelayMs: number, intervalMs: number) {
+  const tick = async () => {
+    try {
+      await run();
+    } finally {
+      setTimeout(() => void tick(), intervalMs);
+    }
+  };
+  setTimeout(() => void tick(), firstDelayMs);
+}
+
 /** Real-funds only (custody P1): poll deposit addresses, sweep + credit new USDC. */
 function startDepositScanner(db: Db, log: FastifyBaseLogger) {
   const chain = solanaDepositChain();
-  const run = () =>
-    scanDeposits(db, chain, log)
-      .then((r) => {
-        if (r.credited > 0) log.info(r, 'deposits credited');
-      })
-      .catch((e) => log.error(e, 'deposit scan failed (will retry)'));
-  setTimeout(run, 3000);
-  setInterval(run, config.depositScanMs);
+  chainLoop(
+    () =>
+      scanDeposits(db, chain, log)
+        .then((r) => {
+          if (r.credited > 0) log.info(r, 'deposits credited');
+        })
+        .catch((e) => log.error(e, 'deposit scan failed (will retry)')),
+    3000,
+    config.depositScanMs,
+  );
 }
 
 /** Real-funds only (custody P2): recover in-flight withdrawals on boot (crash safety — always),
@@ -56,13 +74,16 @@ function startWithdrawalWorker(db: Db, log: FastifyBaseLogger) {
     })
     .catch((e) => log.error(e, 'withdrawal boot recovery failed'));
   if (config.withdrawalAutoProcess) {
-    const run = () =>
-      processAllRequested(db, chain, log)
-        .then((r) => {
-          if (r.confirmed > 0) log.info(r, 'withdrawals processed');
-        })
-        .catch((e) => log.error(e, 'withdrawal processing failed (will retry)'));
-    setInterval(run, config.withdrawalProcessMs);
+    chainLoop(
+      () =>
+        processAllRequested(db, chain, log)
+          .then((r) => {
+            if (r.confirmed > 0) log.info(r, 'withdrawals processed');
+          })
+          .catch((e) => log.error(e, 'withdrawal processing failed (will retry)')),
+      config.withdrawalProcessMs,
+      config.withdrawalProcessMs,
+    );
   }
 }
 

@@ -51,14 +51,18 @@ the play-money MVP; do the cookie migration in **P4** alongside the audit/deploy
 
 ### Custody deposit-path re-review (the surface the automated reviewer never finished)
 Core crediting design verified sound (idempotent, reorg-safe at `finalized`, credits actual-not-quoted,
-no double-credit under concurrency, route auth correct). Open items tracked for Commit 3 / later:
-- **F1 (HIGH):** fixed `limit:20` signature window with no pagination → a backlog or adversarial dust-spam can permanently strand (never-credit) a deposit. Fix: cursor/backward-pagination + persisted per-address high-water sig.
-- **F2 (MED):** devnet SOL deposits loop in `swapping` forever (Jupiter has no devnet route). Fix: gate/handle the SOL swap path off when the network can't route; surface a stranded-SOL state instead of an infinite retry.
-- **F3 (MED):** scanner has no reentrancy guard (`setInterval` doesn't await) → overlapping passes redundantly fire SOL swaps. Fix: self-chained `setTimeout` or per-address lock.
-- **F4 (MED):** sub-minimum dust is re-parsed on every scan forever and pollutes the sig window (amplifies F1). Fix: record dust sigs as a terminal `ignored` row.
-- **F5 (LOW-MED):** hot-wallet SOL griefing — every $1 deposit forces a hot-wallet-funded sweep. Fix: sweep only above a cost-multiple threshold; monitor/refill hot wallet.
-- **F6 (LOW, mainnet/P4):** SOL→USDC swaps sandwichable at 1% via public RPC. Fix: tighten slippage + private/Jito route at mainnet.
-- **F7 (LOW):** HD index allocation can throw a transient 500 under a burst of >3 simultaneous first-time registrations (no collision/fund risk). Fix: DB sequence or single-statement allocation.
+no double-credit under concurrency, route auth correct).
+
+Fixed (deposit-path hardening commit):
+- **F1 (HIGH):** fixed `limit:20` signature window with no pagination → a backlog or adversarial dust-spam could permanently strand (never-credit) a deposit. Fixed: the chain impl pages the full signature history backwards (1000/page) down to a persisted per-(address, asset) high-water sig (`deposit_scan_cursors`); the cursor only advances over fully-fetched history, deposits rows are recorded before the cursor moves, and a transiently unfetchable finalized tx aborts the pass (retry) instead of being skipped under an advancing cursor.
+- **F2 (MED):** devnet SOL deposits looped in `swapping` forever (Jupiter has no devnet route). Fixed: `config.solSwapsEnabled` (default: only when `USDC_MINT` is the mainnet mint; `SOL_SWAPS_ENABLED` overrides) — off-route networks park SOL rows at `detected` with zero swap attempts, and they self-heal on a swap-capable network.
+- **F3 (MED):** scanner had no reentrancy guard (`setInterval` doesn't await) → overlapping passes could redundantly fire SOL swaps. Fixed: self-chained loops (`chainLoop` in `index.ts`) for the deposit scanner AND the withdrawal processor — the next pass schedules only after the current one finishes.
+- **F4 (MED):** sub-minimum dust was re-parsed on every scan forever and polluted the sig window (amplified F1). Fixed: dust is recorded as a terminal `ignored` row — never credited (`creditDeposit` guards on `status = 'detected'`), never re-fetched or re-parsed.
+
+Deferred (tracked, deliberately not in scope yet):
+- **F5 (LOW-MED):** hot-wallet SOL griefing — every $1 deposit forces a hot-wallet-funded sweep. Fix when treasury automation lands (P3): sweep only above a cost-multiple threshold; monitor/refill hot wallet.
+- **F6 (LOW, mainnet/P4):** SOL→USDC swaps sandwichable at 1% via public RPC. Fix at mainnet dark-launch: tighten slippage + private/Jito route.
+- **F7 (LOW):** HD index allocation can throw a transient 500 under a burst of >3 simultaneous first-time registrations (no collision/fund risk). Fix opportunistically: DB sequence or single-statement allocation.
 
 ### Accepted / deferred (design or out-of-scope for the MVP)
 - **Refresh token in `localStorage`** — see Decisions above (deferred to P4).

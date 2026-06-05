@@ -338,7 +338,8 @@ CREATE TABLE IF NOT EXISTS deposit_addresses (
 -- double-credit) while allowing one tx to carry both SOL and USDC. USDC rows credit directly;
 -- SOL rows are swapped in place via Jupiter and NEVER credit — the swap's USDC proceeds land on
 -- the deposit address and are detected + credited as their own USDC row (sig = the swap tx),
--- which makes the swap crash-safe and double-credit structurally impossible.
+-- which makes the swap crash-safe and double-credit structurally impossible. Sub-minimum dust is
+-- recorded as a terminal 'ignored' row so it is never re-parsed (and never credits).
 CREATE TABLE IF NOT EXISTS deposits (
   id               TEXT PRIMARY KEY,
   user_id          TEXT NOT NULL REFERENCES users(id),
@@ -348,7 +349,7 @@ CREATE TABLE IF NOT EXISTS deposits (
   usdc_credited_e6 BIGINT,                           -- ACTUAL credited proceeds; never clamped (USDC rows)
   swap_sig         TEXT,                             -- Jupiter swap signature (SOL rows)
   sweep_sig        TEXT,                             -- deposit-wallet -> treasury sweep signature
-  status           TEXT NOT NULL DEFAULT 'detected', -- detected|swapping|swapped|credited
+  status           TEXT NOT NULL DEFAULT 'detected', -- detected|swapping|swapped|credited|ignored
   txn_id           TEXT,                             -- ledger txn id once credited
   observed_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   credited_at      TIMESTAMPTZ
@@ -359,6 +360,19 @@ CREATE INDEX IF NOT EXISTS idx_deposits_status ON deposits(status);
 -- upgrade DBs created on the P0/P1 schema (no-ops on fresh)
 ALTER TABLE deposits ADD COLUMN IF NOT EXISTS sweep_sig TEXT;
 ALTER TABLE deposits DROP CONSTRAINT IF EXISTS deposits_onchain_sig_key;
+
+-- Deposit-scan high-water marks: the newest fully-processed signature per scanned chain address
+-- and asset. The scanner pages the RPC signature history backwards only until this mark, so a
+-- backlog (or adversarial dust-spam) larger than one RPC page can never evict — and thereby
+-- permanently strand — an unprocessed deposit. Advanced only after the pass's deposits rows are
+-- recorded, and only when the pagination completed (crash/backlog-safe in both directions).
+CREATE TABLE IF NOT EXISTS deposit_scan_cursors (
+  address    TEXT NOT NULL REFERENCES deposit_addresses(address),
+  asset      TEXT NOT NULL,                -- 'USDC' | 'SOL' (scanned via different chain addresses)
+  high_sig   TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (address, asset)
+);
 
 -- Outbound withdrawals. Two-phase: ledger debited at `signed`, BEFORE broadcast; signed_tx +
 -- onchain_sig persisted at signing so a crash can only re-broadcast the SAME tx (idempotent),

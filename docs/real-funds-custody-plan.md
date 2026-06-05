@@ -1,6 +1,6 @@
 # Real-Funds Custody Plan — deposits, withdrawals & treasury (v2, reviewed)
 
-**Status:** v2, **P0–P2 implemented** (devnet): deposits (USDC + SOL-via-Jupiter), withdrawals (step-up SIWS, atomic debit, sign-once-persist-then-broadcast, boot recovery, manual approval — `WITHDRAWAL_AUTO_PROCESS` gates the P3 loop). P3 (treasury automation/PoR auto-freeze) + P4 (mainnet gates) outstanding. Hard-gated behind `REAL_FUNDS` + a security audit + legal/AML review.
+**Status:** v2, **P0–P2 implemented** (devnet): deposits (USDC + SOL-via-Jupiter), withdrawals (step-up SIWS, atomic debit, sign-once-persist-then-broadcast, boot recovery, manual approval — `WITHDRAWAL_AUTO_PROCESS` gates the P3 loop). Deposit path hardened per the security re-review (`docs/security-notes.md` F1–F4: paginated scan + persisted high-water cursors, off-route SOL parking, non-overlapping worker loops, terminal dust rows; F5–F7 deferred). P3 (treasury automation/PoR auto-freeze) + P4 (mainnet gates) outstanding. Hard-gated behind `REAL_FUNDS` + a security audit + legal/AML review.
 **Model:** Custodial USDC balance on Solana, per-user HD deposit wallets, server-side Jupiter SOL→USDC auto-swap. Reuses the existing double-entry ledger + perps engine unchanged.
 
 ---
