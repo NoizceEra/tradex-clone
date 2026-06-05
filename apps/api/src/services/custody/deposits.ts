@@ -6,19 +6,26 @@ import { getOrCreateSystemAccount, getOrCreateUserAccount, postTxn } from '../le
 import { deriveDepositKeypair } from './wallet.ts';
 
 /**
- * USDC deposit pipeline (custody P1, USDC-only — SOL + Jupiter auto-swap is P1.5):
+ * Deposit pipeline (custody P1 + P1.5):
  *
- *   detect (finalized) -> credit the ledger -> sweep to treasury (async, self-healing)
+ *   USDC:  detect (finalized) -> credit the ledger -> sweep to treasury (async, self-healing)
+ *   SOL:   detect (finalized) -> Jupiter-swap to USDC, in place -> the swap's USDC proceeds land
+ *          on this same deposit address and are detected + credited as their own USDC row
+ *          (sig = the swap tx) on a later pass.
+ *
+ * SOL rows NEVER credit directly — only USDC rows do. That single rule makes the swap crash-safe
+ * (an unrecorded swap's proceeds still credit via the USDC path) and double-credits structurally
+ * impossible (every credited sig is a unique USDC delta, once).
  *
  * Credit-first: once an inbound transfer is FINALIZED the funds already sit in our custody
  * (the deposit address is ours, HD-derived), so the user is credited immediately — sweep
- * health never delays or strands a credit. The sweep is a FULL-BALANCE move (naturally
- * idempotent: it retries until the address is empty, one sweep may cover several deposits).
+ * health never delays or strands a credit. Both the sweep and the SOL swap are FULL-BALANCE
+ * moves (naturally idempotent: they retry until the address is empty).
  *
- * Crediting is idempotent (deposits.onchain_sig UNIQUE + a status guard under FOR UPDATE)
- * and ALWAYS for the full received amount — the play-money faucet clamp (creditCapped's
- * $1M cap) must never apply to real money: a clamped real deposit would be USDC received
- * on-chain but not credited.
+ * Crediting is idempotent (UNIQUE(onchain_sig, asset) + a status guard under FOR UPDATE) and
+ * ALWAYS for the full received amount — the play-money faucet clamp (creditCapped's $1M cap)
+ * must never apply to real money: a clamped real deposit would be USDC received on-chain but
+ * not credited.
  *
  * Proof-of-reserves note: with credit-before-sweep, on-chain custody = treasury + unswept
  * deposit-address balances; prompt sweeps keep the second term ~0 and the P3 chain
@@ -30,6 +37,11 @@ export interface InboundUsdc {
   amountE6: bigint;
 }
 
+export interface InboundSol {
+  sig: string;
+  lamports: bigint;
+}
+
 export interface SweepResult {
   sig: string;
   amountE6: bigint;
@@ -39,6 +51,13 @@ export interface SweepResult {
 export interface DepositChain {
   /** Finalized inbound USDC transfers to `address`, oldest first. `knownSigs` lets impls skip work. */
   inboundUsdc(address: string, knownSigs: Set<string>): Promise<InboundUsdc[]>;
+  /** Finalized inbound native-SOL transfers to `address`, oldest first. */
+  inboundSol(address: string, knownSigs: Set<string>): Promise<InboundSol[]>;
+  /** Finalized native-SOL balance of `address`. */
+  solBalance(address: string): Promise<bigint>;
+  /** Swap `lamports` of the deposit wallet's SOL into USDC in place (Jupiter; the wallet pays its
+   *  own fee from the SOL). Proceeds land on the wallet's USDC ATA. Returns the swap signature. */
+  swapSolToUsdc(from: Keypair, lamports: bigint): Promise<string>;
   /** Sweep the deposit wallet's ENTIRE USDC balance to the treasury (hot wallet = fee payer).
    *  Naturally idempotent — returns null when there is nothing to sweep. */
   sweepAll(from: Keypair): Promise<SweepResult | null>;
@@ -46,15 +65,20 @@ export interface DepositChain {
 
 const minDepositE6 = (): bigint => BigInt(Math.round(config.minDepositUsd * 1_000_000));
 
-/** Credit a finalized deposit to the user's collateral — full amount, never clamped. Idempotent. */
+/** Kept back from every SOL swap: the swap tx fee + wSOL/ATA rent headroom (0.01 SOL). The
+ *  residue stays on the deposit address; an ops sweep can reclaim it later. */
+const SOL_FEE_RESERVE_LAMPORTS = 10_000_000n;
+
+/** Credit a finalized USDC deposit to the user's collateral — full amount, never clamped. Idempotent. */
 export async function creditDeposit(db: Db, depositId: string): Promise<string | null> {
   return db.tx(async (q) => {
-    const r = await q.query<{ user_id: string; amt: string; status: string }>(
-      `SELECT user_id, amount_in_raw::text AS amt, status FROM deposits WHERE id = $1 FOR UPDATE`,
+    const r = await q.query<{ user_id: string; amt: string; status: string; asset: string }>(
+      `SELECT user_id, amount_in_raw::text AS amt, status, asset FROM deposits WHERE id = $1 FOR UPDATE`,
       [depositId],
     );
     const d = r.rows[0];
     if (!d || d.status === 'credited') return null; // unknown or already credited (idempotent)
+    if (d.asset !== 'USDC') return null; // SOL rows never credit — their swapped proceeds do
     const amount = BigInt(d.amt); // USDC raw units == micro-USDC
 
     const coll = await getOrCreateUserAccount(q, d.user_id, 'USER_COLLATERAL');
@@ -78,9 +102,10 @@ export async function creditDeposit(db: Db, depositId: string): Promise<string |
 
 /**
  * One scan pass over every deposit address:
- *   1. record new finalized inbound USDC (>= the dust threshold) — idempotent by signature;
- *   2. credit every uncredited row (re-entrant: also resumes rows stranded by a prior crash);
- *   3. sweep whatever sits on the deposit wallet to the treasury (retried next pass on failure).
+ *   1. record new finalized inbound USDC + SOL (idempotent by (signature, asset));
+ *   2. swap pending SOL into USDC in place (balance-based, self-healing — see header);
+ *   3. credit every uncredited USDC row (re-entrant: also resumes rows stranded by a crash);
+ *   4. sweep the wallet's USDC to the treasury (retried next pass on failure).
  * Per-address failures are logged and don't stop the pass; everything is safe to re-run.
  */
 export async function scanDeposits(
@@ -95,39 +120,78 @@ export async function scanDeposits(
 
   for (const a of addrs.rows) {
     try {
-      // 1) detect
-      const known = await db.query<{ onchain_sig: string }>(
-        `SELECT onchain_sig FROM deposits WHERE user_id = $1`,
+      // 1) detect (signatures already recorded for this user are skipped per asset)
+      const known = await db.query<{ onchain_sig: string; asset: string }>(
+        `SELECT onchain_sig, asset FROM deposits WHERE user_id = $1`,
         [a.user_id],
       );
-      const knownSigs = new Set(known.rows.map((r) => r.onchain_sig));
-      for (const t of await chain.inboundUsdc(a.address, knownSigs)) {
-        if (knownSigs.has(t.sig)) continue;
+      const knownUsdc = new Set(known.rows.filter((r) => r.asset === 'USDC').map((r) => r.onchain_sig));
+      const knownSol = new Set(known.rows.filter((r) => r.asset === 'SOL').map((r) => r.onchain_sig));
+
+      for (const t of await chain.inboundUsdc(a.address, knownUsdc)) {
+        if (knownUsdc.has(t.sig)) continue;
         if (t.amountE6 < minDepositE6()) continue; // dust: uneconomic to sweep (and anti-dusting)
         await db.query(
           `INSERT INTO deposits(id, user_id, onchain_sig, asset, amount_in_raw, status)
            VALUES($1, $2, $3, 'USDC', $4, 'detected')
-           ON CONFLICT(onchain_sig) DO NOTHING`,
+           ON CONFLICT(onchain_sig, asset) DO NOTHING`,
           [randomUUID(), a.user_id, t.sig, t.amountE6.toString()],
         );
       }
+      for (const t of await chain.inboundSol(a.address, knownSol)) {
+        if (knownSol.has(t.sig)) continue;
+        await db.query(
+          `INSERT INTO deposits(id, user_id, onchain_sig, asset, amount_in_raw, status)
+           VALUES($1, $2, $3, 'SOL', $4, 'detected')
+           ON CONFLICT(onchain_sig, asset) DO NOTHING`,
+          [randomUUID(), a.user_id, t.sig, t.lamports.toString()],
+        );
+      }
 
-      // 2) credit (re-entrant)
+      // 2) swap pending SOL -> USDC in place (balance-based). If the balance is at/below the fee
+      //    reserve there is nothing meaningfully swappable — either a prior (unrecorded) swap
+      //    already converted it (its proceeds credit via the USDC path) or it's true dust — so
+      //    the rows are closed out either way.
+      const solPending = await db.query<{ id: string }>(
+        `SELECT id FROM deposits WHERE user_id = $1 AND asset = 'SOL' AND status IN ('detected', 'swapping')`,
+        [a.user_id],
+      );
+      if (solPending.rows.length > 0) {
+        const balance = await chain.solBalance(a.address);
+        if (balance > SOL_FEE_RESERVE_LAMPORTS * 2n) {
+          for (const { id } of solPending.rows) {
+            await db.query(`UPDATE deposits SET status = 'swapping' WHERE id = $1`, [id]);
+          }
+          const sig = await chain.swapSolToUsdc(
+            deriveDepositKeypair(a.derivation_index),
+            balance - SOL_FEE_RESERVE_LAMPORTS,
+          );
+          for (const { id } of solPending.rows) {
+            await db.query(`UPDATE deposits SET status = 'swapped', swap_sig = $2 WHERE id = $1`, [id, sig]);
+          }
+        } else {
+          for (const { id } of solPending.rows) {
+            await db.query(`UPDATE deposits SET status = 'swapped' WHERE id = $1`, [id]);
+          }
+        }
+      }
+
+      // 3) credit (USDC rows only; re-entrant)
       const pending = await db.query<{ id: string }>(
-        `SELECT id FROM deposits WHERE user_id = $1 AND status <> 'credited'`,
+        `SELECT id FROM deposits WHERE user_id = $1 AND asset = 'USDC' AND status <> 'credited'`,
         [a.user_id],
       );
       for (const p of pending.rows) {
         if (await creditDeposit(db, p.id)) credited++;
       }
 
-      // 3) sweep (idempotent full-balance move; a failure here never blocks credits)
+      // 4) sweep (idempotent full-balance move; a failure here never blocks credits)
       const sweep = await chain.sweepAll(deriveDepositKeypair(a.derivation_index));
       if (sweep) {
-        await db.query(`UPDATE deposits SET sweep_sig = $2 WHERE user_id = $1 AND sweep_sig IS NULL`, [
-          a.user_id,
-          sweep.sig,
-        ]);
+        await db.query(
+          `UPDATE deposits SET sweep_sig = $2 WHERE user_id = $1 AND asset = 'USDC' AND sweep_sig IS NULL`,
+          [a.user_id, sweep.sig],
+        );
       }
     } catch (e) {
       log?.error(e, `deposit scan failed for ${a.address} (will retry next pass)`);

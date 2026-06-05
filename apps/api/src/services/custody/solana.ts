@@ -6,7 +6,8 @@ import {
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import { config } from '../../config.ts';
-import type { DepositChain, InboundUsdc } from './deposits.ts';
+import { swapSolToUsdcViaJupiter } from './jupiter.ts';
+import type { DepositChain, InboundSol, InboundUsdc } from './deposits.ts';
 
 /**
  * Live Solana implementation of the DepositChain surface (custody P1).
@@ -54,6 +55,35 @@ export function solanaDepositChain(): DepositChain {
         if (delta > 0n) out.push({ sig: s.signature, amountE6: delta });
       }
       return out;
+    },
+
+    async inboundSol(address: string, knownSigs: Set<string>): Promise<InboundSol[]> {
+      const pk = new PublicKey(address);
+      const sigs = await conn.getSignaturesForAddress(pk, { limit: 20 }, 'finalized');
+      const out: InboundSol[] = [];
+      for (const s of sigs.reverse()) {
+        // oldest first; skip failures + known sigs. The wallet's own swaps/sweeps show up here
+        // too but with a non-positive lamport delta, so the > 0 filter drops them.
+        if (s.err || knownSigs.has(s.signature)) continue;
+        const tx = await conn.getParsedTransaction(s.signature, {
+          commitment: 'finalized',
+          maxSupportedTransactionVersion: 0,
+        });
+        if (!tx?.meta) continue;
+        const idx = tx.transaction.message.accountKeys.findIndex((k) => k.pubkey.toBase58() === address);
+        if (idx < 0) continue;
+        const delta = BigInt(tx.meta.postBalances[idx]) - BigInt(tx.meta.preBalances[idx]);
+        if (delta > 0n) out.push({ sig: s.signature, lamports: delta });
+      }
+      return out;
+    },
+
+    async solBalance(address: string): Promise<bigint> {
+      return BigInt(await conn.getBalance(new PublicKey(address), 'finalized'));
+    },
+
+    async swapSolToUsdc(from: Keypair, lamports: bigint): Promise<string> {
+      return swapSolToUsdcViaJupiter(conn, from, lamports);
     },
 
     async sweepAll(from: Keypair) {

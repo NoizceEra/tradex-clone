@@ -20,26 +20,56 @@ const { reconcile } = await import('./reconcile.ts');
 await initDb();
 const db = await getDb();
 
+const LAMPORTS_PER_SOL = 1_000_000_000n;
+const FEE_RESERVE = 10_000_000n; // mirrors SOL_FEE_RESERVE_LAMPORTS in deposits.ts
+const FAKE_RATE_E6_PER_SOL = 150_000_000n; // $150/SOL in the fake chain
+
 async function newUser(): Promise<string> {
   const id = randomUUID();
   await db.query(`INSERT INTO users(id, solana_pubkey) VALUES($1, $2)`, [id, 'pk-' + id.slice(0, 8)]);
   return id;
 }
 
-/** In-memory DepositChain: inbound transfers + simulated deposit-wallet balances + a sweep log. */
+/** In-memory DepositChain: USDC + SOL inbound queues, simulated balances, swap + sweep logs. */
 function fakeChain() {
   const chain = {
     inbound: new Map<string, { sig: string; amountE6: bigint }[]>(),
-    balances: new Map<string, bigint>(),
+    inboundSolQ: new Map<string, { sig: string; lamports: bigint }[]>(),
+    balances: new Map<string, bigint>(), // USDC on the deposit wallet
+    solBalances: new Map<string, bigint>(),
     sweeps: [] as { from: string; amountE6: bigint }[],
+    swaps: [] as { from: string; lamports: bigint }[],
     failSweeps: false,
-    /** queue an inbound transfer + land the funds on the simulated deposit wallet */
+    /** queue an inbound USDC transfer + land the funds on the simulated deposit wallet */
     deposit(address: string, sig: string, amountE6: bigint) {
       chain.inbound.set(address, [...(chain.inbound.get(address) ?? []), { sig, amountE6 }]);
       chain.balances.set(address, (chain.balances.get(address) ?? 0n) + amountE6);
     },
+    /** queue an inbound SOL transfer + land the lamports on the simulated deposit wallet */
+    depositSol(address: string, sig: string, lamports: bigint) {
+      chain.inboundSolQ.set(address, [...(chain.inboundSolQ.get(address) ?? []), { sig, lamports }]);
+      chain.solBalances.set(address, (chain.solBalances.get(address) ?? 0n) + lamports);
+    },
     async inboundUsdc(address: string): Promise<{ sig: string; amountE6: bigint }[]> {
       return chain.inbound.get(address) ?? [];
+    },
+    async inboundSol(address: string): Promise<{ sig: string; lamports: bigint }[]> {
+      return chain.inboundSolQ.get(address) ?? [];
+    },
+    async solBalance(address: string): Promise<bigint> {
+      return chain.solBalances.get(address) ?? 0n;
+    },
+    async swapSolToUsdc(from: Keypair, lamports: bigint): Promise<string> {
+      const addr = from.publicKey.toBase58();
+      const bal = chain.solBalances.get(addr) ?? 0n;
+      if (lamports > bal) throw new Error('insufficient SOL');
+      chain.solBalances.set(addr, bal - lamports);
+      chain.swaps.push({ from: addr, lamports });
+      const sig = `swap-${chain.swaps.length}-${addr.slice(0, 6)}`;
+      // proceeds land on the wallet's own USDC ATA — visible as a new inbound USDC delta
+      const proceedsE6 = (lamports * FAKE_RATE_E6_PER_SOL) / LAMPORTS_PER_SOL;
+      chain.deposit(addr, sig, proceedsE6);
+      return sig;
     },
     async sweepAll(from: Keypair): Promise<{ sig: string; amountE6: bigint } | null> {
       if (chain.failSweeps) throw new Error('simulated RPC outage');
@@ -66,7 +96,7 @@ test('deposit addresses are stable per user, unique across users, and re-derivab
   assert.equal(a1.derivationIndex, a1again.derivationIndex);
   assert.notEqual(a1.address, a2.address); // distinct users, distinct addresses
   assert.notEqual(a1.derivationIndex, a2.derivationIndex);
-  // the stored address is exactly what the HD path re-derives (sweeps depend on this)
+  // the stored address is exactly what the HD path re-derives (sweeps/swaps depend on this)
   assert.equal(deriveDepositKeypair(a1.derivationIndex).publicKey.toBase58(), a1.address);
 });
 
@@ -150,6 +180,68 @@ test('a sweep failure never blocks or strands the credit; the sweep self-heals n
   assert.ok(row.sweep_sig, 'sweep retried and recorded');
   assert.equal((await getUserBalances(db, u)).availableUusdc, amount); // unchanged
 
+  assert.equal((await reconcile(db)).ok, true);
+});
+
+test('SOL deposits swap in place and credit the ACTUAL proceeds — never the SOL row itself', async () => {
+  const u = await newUser();
+  const addr = await getOrCreateDepositAddress(db, u);
+  const chain = fakeChain();
+  chain.depositSol(addr.address, 'sig-sol-1', LAMPORTS_PER_SOL); // 1 SOL
+
+  // pass 1: detect + swap (fee reserve held back); proceeds are a new USDC delta, credited next pass
+  assert.equal((await scanDeposits(db, chain)).credited, 0);
+  assert.deepEqual(chain.swaps, [{ from: addr.address, lamports: LAMPORTS_PER_SOL - FEE_RESERVE }]);
+  const solRow = (
+    await db.query<{ status: string; swap_sig: string | null; usdc_credited_e6: string | null; txn_id: string | null }>(
+      `SELECT status, swap_sig, usdc_credited_e6::text AS usdc_credited_e6, txn_id FROM deposits WHERE onchain_sig = 'sig-sol-1' AND asset = 'SOL'`,
+    )
+  ).rows[0];
+  assert.equal(solRow.status, 'swapped');
+  assert.ok(solRow.swap_sig, 'swap recorded');
+  assert.equal(solRow.usdc_credited_e6, null); // SOL rows never credit
+  assert.equal(solRow.txn_id, null);
+
+  // pass 2: the swap's USDC proceeds are detected (sig = the swap tx), credited in full, swept
+  assert.equal((await scanDeposits(db, chain)).credited, 1);
+  const expected = ((LAMPORTS_PER_SOL - FEE_RESERVE) * FAKE_RATE_E6_PER_SOL) / LAMPORTS_PER_SOL;
+  assert.equal((await getUserBalances(db, u)).availableUusdc, expected);
+  const usdcRow = (
+    await db.query<{ status: string }>(`SELECT status FROM deposits WHERE onchain_sig = $1 AND asset = 'USDC'`, [solRow.swap_sig])
+  ).rows[0];
+  assert.equal(usdcRow.status, 'credited');
+
+  // steady state: nothing further credits or swaps
+  assert.equal((await scanDeposits(db, chain)).credited, 0);
+  assert.equal(chain.swaps.length, 1);
+  assert.equal((await reconcile(db)).ok, true);
+});
+
+test('an unrecorded swap cannot strand or double-credit: proceeds credit via the USDC path', async () => {
+  const u = await newUser();
+  const addr = await getOrCreateDepositAddress(db, u);
+  const chain = fakeChain();
+
+  // Simulate a crash after a swap was broadcast but before the SOL row was updated:
+  // history shows the SOL inbound, the wallet only holds sub-reserve residue, and the swap's
+  // proceeds already sit on the wallet as a USDC delta.
+  chain.inboundSolQ.set(addr.address, [{ sig: 'sig-sol-lost', lamports: 500_000_000n }]);
+  chain.solBalances.set(addr.address, 5_000_000n); // below the fee reserve — nothing swappable
+  chain.deposit(addr.address, 'swap-lost', 74_000_000n); // the unrecorded swap's $74 proceeds
+
+  const r = await scanDeposits(db, chain);
+  assert.equal(r.credited, 1); // proceeds credited exactly once
+  assert.equal((await getUserBalances(db, u)).availableUusdc, 74_000_000n);
+  const solRow = (
+    await db.query<{ status: string; txn_id: string | null }>(
+      `SELECT status, txn_id FROM deposits WHERE onchain_sig = 'sig-sol-lost' AND asset = 'SOL'`,
+    )
+  ).rows[0];
+  assert.equal(solRow.status, 'swapped'); // closed out without a second swap
+  assert.equal(solRow.txn_id, null);
+  assert.equal(chain.swaps.length, 0); // no swap was attempted on the residue
+
+  assert.equal((await scanDeposits(db, chain)).credited, 0);
   assert.equal((await reconcile(db)).ok, true);
 });
 
