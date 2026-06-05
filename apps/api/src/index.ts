@@ -3,6 +3,8 @@ import { initDb } from './db/init.ts';
 import { ingest } from './services/oracle.ts';
 import { accrueFunding } from './services/funding.ts';
 import { liquidateEligible, haltStaleMarkets } from './services/engine.ts';
+import { scanDeposits } from './services/custody/deposits.ts';
+import { solanaDepositChain } from './services/custody/solana.ts';
 import type { Db } from './db/client.ts';
 import type { FastifyBaseLogger } from 'fastify';
 import { config } from './config.ts';
@@ -29,6 +31,19 @@ function startFundingLoop(db: Db, log: FastifyBaseLogger) {
   setInterval(() => void run(), config.fundingIntervalMs);
 }
 
+/** Real-funds only (custody P1): poll deposit addresses, sweep + credit new USDC. */
+function startDepositScanner(db: Db, log: FastifyBaseLogger) {
+  const chain = solanaDepositChain();
+  const run = () =>
+    scanDeposits(db, chain, log)
+      .then((r) => {
+        if (r.credited > 0) log.info(r, 'deposits credited');
+      })
+      .catch((e) => log.error(e, 'deposit scan failed (will retry)'));
+  setTimeout(run, 3000);
+  setInterval(run, config.depositScanMs);
+}
+
 function startLiquidationLoop(db: Db, log: FastifyBaseLogger) {
   const run = async () => {
     try {
@@ -52,6 +67,7 @@ async function main() {
     startOracleLoop(db, app.log);
     startFundingLoop(db, app.log);
     startLiquidationLoop(db, app.log);
+    if (config.realFunds) startDepositScanner(db, app.log);
   } catch (err) {
     app.log.error(err);
     process.exit(1);

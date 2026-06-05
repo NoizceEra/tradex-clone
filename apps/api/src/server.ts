@@ -10,6 +10,7 @@ import { lpRoutes } from './routes/lp.ts';
 import { socialRoutes } from './routes/social.ts';
 import { historyRoutes } from './routes/history.ts';
 import { chatRoutes } from './routes/chat.ts';
+import { walletRoutes } from './routes/wallet.ts';
 import { registerWs } from './plugins/ws.ts';
 
 /**
@@ -59,6 +60,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(socialRoutes);
   await app.register(historyRoutes);
   await app.register(chatRoutes);
+  await app.register(walletRoutes);
 
   return app;
 }

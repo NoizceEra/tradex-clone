@@ -332,6 +332,7 @@ CREATE TABLE IF NOT EXISTS deposits (
   amount_in_raw    BIGINT NOT NULL,                  -- raw units of `asset` (lamports / micro-USDC)
   usdc_credited_e6 BIGINT,                           -- ACTUAL credited proceeds (post-swap); never clamped
   swap_sig         TEXT,                             -- Jupiter swap signature (SOL deposits only)
+  sweep_sig        TEXT,                             -- deposit-wallet -> treasury sweep signature
   status           TEXT NOT NULL DEFAULT 'detected', -- detected|swapping|swept|credited
   txn_id           TEXT,                             -- ledger txn id once credited
   observed_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -339,6 +340,8 @@ CREATE TABLE IF NOT EXISTS deposits (
 );
 CREATE INDEX IF NOT EXISTS idx_deposits_user   ON deposits(user_id, observed_at);
 CREATE INDEX IF NOT EXISTS idx_deposits_status ON deposits(status);
+-- upgrade DBs created on the P0 schema (no-op on fresh)
+ALTER TABLE deposits ADD COLUMN IF NOT EXISTS sweep_sig TEXT;
 
 -- Outbound withdrawals. Two-phase: ledger debited at `signed`, BEFORE broadcast; signed_tx +
 -- onchain_sig persisted at signing so a crash can only re-broadcast the SAME tx (idempotent),

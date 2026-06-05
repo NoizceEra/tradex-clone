@@ -78,13 +78,31 @@ export const config = {
   minWithdrawalUsd: num('MIN_WITHDRAWAL_USD', 5),
   withdrawalDailyCapUsd: num('WITHDRAWAL_DAILY_CAP_USD', 10_000), // per-user velocity cap
   hotWalletMaxUsd: num('HOT_WALLET_MAX_USD', 25_000), // hot float cap; excess swept to cold
+  depositScanMs: num('DEPOSIT_SCAN_MS', 30_000), // deposit scanner cadence
 };
 
 if (config.realFunds) {
-  // Refuse to run the real-money path on the play-money MVP build.
-  throw new Error(
-    'REAL_FUNDS=true is not supported in the MVP build. Real custody is gated behind a security audit + legal review.',
-  );
+  // Real funds (custody P1+, devnet): the deposit path needs its custody config up front.
+  // Secrets stay off the config object: DEPOSIT_MASTER_SEED + HOT_WALLET_SECRET are read from
+  // the environment directly by services/custody (dev/devnet) so config logging can't leak them.
+  const missing = [
+    !config.usdcMint && 'USDC_MINT',
+    !config.treasuryPubkey && 'TREASURY_PUBKEY',
+    !process.env.DEPOSIT_MASTER_SEED && !config.depositSeedKmsRef && 'DEPOSIT_MASTER_SEED (dev) or DEPOSIT_SEED_KMS_REF',
+    !process.env.HOT_WALLET_SECRET && 'HOT_WALLET_SECRET',
+  ].filter(Boolean);
+  if (missing.length > 0) {
+    throw new Error(`REAL_FUNDS=true requires custody config; missing: ${missing.join(', ')}`);
+  }
+  // MAINNET stays hard-gated until audit + KYC/AML + geofence (custody P4 in
+  // docs/real-funds-custody-plan.md). Devnet/testnet runs need no override.
+  const MAINNET_USDC = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+  const mainnetish = /mainnet/i.test(config.solanaRpcUrl) || config.usdcMint === MAINNET_USDC;
+  if (mainnetish && process.env.ALLOW_MAINNET_FUNDS !== 'true') {
+    throw new Error(
+      'REAL_FUNDS on MAINNET is gated behind the audit + KYC/AML + geofence (custody P4). Set ALLOW_MAINNET_FUNDS=true only once those gates are met.',
+    );
+  }
 }
 
 // Never run in production with the committed default JWT secret (would allow token forgery).
