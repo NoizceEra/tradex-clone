@@ -59,10 +59,16 @@ Fixed (deposit-path hardening commit):
 - **F3 (MED):** scanner had no reentrancy guard (`setInterval` doesn't await) → overlapping passes could redundantly fire SOL swaps. Fixed: self-chained loops (`chainLoop` in `index.ts`) for the deposit scanner AND the withdrawal processor — the next pass schedules only after the current one finishes.
 - **F4 (MED):** sub-minimum dust was re-parsed on every scan forever and polluted the sig window (amplified F1). Fixed: dust is recorded as a terminal `ignored` row — never credited (`creditDeposit` guards on `status = 'detected'`), never re-fetched or re-parsed.
 
+Fixed (treasury automation commit, P3):
+- **F5 (LOW-MED):** hot-wallet SOL griefing — every $1 deposit forced a hot-wallet-funded sweep. Fixed: deposit sweeps only fire at/above `MIN_SWEEP_USD` (default $10) — small credits accumulate on the deposit address until a sweep is economic; the treasury worker also flags hot-wallet shortfalls (pending payouts > hot balance) for operator top-up.
+
 Deferred (tracked, deliberately not in scope yet):
-- **F5 (LOW-MED):** hot-wallet SOL griefing — every $1 deposit forces a hot-wallet-funded sweep. Fix when treasury automation lands (P3): sweep only above a cost-multiple threshold; monitor/refill hot wallet.
 - **F6 (LOW, mainnet/P4):** SOL→USDC swaps sandwichable at 1% via public RPC. Fix at mainnet dark-launch: tighten slippage + private/Jito route.
 - **F7 (LOW):** HD index allocation can throw a transient 500 under a burst of >3 simultaneous first-time registrations (no collision/fund risk). Fix opportunistically: DB sequence or single-statement allocation.
+
+### Treasury / proof-of-reserves (P3)
+- **Proof of reserves** runs every `TREASURY_PASS_MS`: on-chain custody (cold treasury + hot wallet + credited-but-unswept deposit balances) must cover the ledger's `TREASURY_USDC` liabilities. A breach **auto-freezes withdrawals** (the `system_flags.withdrawals_frozen` row): new requests and new payout signings are rejected with 503; deposits continue; recovery of already-signed payouts proceeds (those debits are final, re-broadcast is idempotent). **Unfreezing is manual** (`unfreezeWithdrawals`) — a PoR breach is an incident, not a self-healing condition.
+- **Velocity guard on automation:** the `WITHDRAWAL_AUTO_PROCESS` loop only pays out rows ≤ `WITHDRAWAL_AUTO_APPROVE_MAX_USD` (default $1k); larger withdrawals sit debited until an operator runs `processWithdrawal` explicitly.
 
 ### Accepted / deferred (design or out-of-scope for the MVP)
 - **Refresh token in `localStorage`** — see Decisions above (deferred to P4).

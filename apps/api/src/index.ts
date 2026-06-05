@@ -5,7 +5,8 @@ import { accrueFunding } from './services/funding.ts';
 import { liquidateEligible, haltStaleMarkets } from './services/engine.ts';
 import { scanDeposits } from './services/custody/deposits.ts';
 import { recoverInFlight, processAllRequested } from './services/custody/withdrawals.ts';
-import { solanaDepositChain, solanaWithdrawChain } from './services/custody/solana.ts';
+import { treasuryPass } from './services/custody/treasury.ts';
+import { solanaDepositChain, solanaWithdrawChain, solanaTreasuryChain } from './services/custody/solana.ts';
 import type { Db } from './db/client.ts';
 import type { FastifyBaseLogger } from 'fastify';
 import { config } from './config.ts';
@@ -87,6 +88,21 @@ function startWithdrawalWorker(db: Db, log: FastifyBaseLogger) {
   }
 }
 
+/** Real-funds only (custody P3): proof-of-reserves (auto-freeze on breach) + hot-float sweeps. */
+function startTreasuryWorker(db: Db, log: FastifyBaseLogger) {
+  const chain = solanaTreasuryChain();
+  chainLoop(
+    () =>
+      treasuryPass(db, chain, log)
+        .then((r) => {
+          if (r.sweptE6 > 0n) log.info({ sweptE6: r.sweptE6.toString() }, 'hot-wallet excess swept to cold');
+        })
+        .catch((e) => log.error(e, 'treasury pass failed (will retry)')),
+    config.treasuryPassMs,
+    config.treasuryPassMs,
+  );
+}
+
 function startLiquidationLoop(db: Db, log: FastifyBaseLogger) {
   const run = async () => {
     try {
@@ -113,6 +129,7 @@ async function main() {
     if (config.realFunds) {
       startDepositScanner(db, app.log);
       startWithdrawalWorker(db, app.log);
+      startTreasuryWorker(db, app.log);
     }
   } catch (err) {
     app.log.error(err);

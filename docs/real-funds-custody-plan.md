@@ -1,6 +1,6 @@
 # Real-Funds Custody Plan — deposits, withdrawals & treasury (v2, reviewed)
 
-**Status:** v2, **P0–P2 implemented** (devnet): deposits (USDC + SOL-via-Jupiter), withdrawals (step-up SIWS, atomic debit, sign-once-persist-then-broadcast, boot recovery, manual approval — `WITHDRAWAL_AUTO_PROCESS` gates the P3 loop). Deposit path hardened per the security re-review (`docs/security-notes.md` F1–F4: paginated scan + persisted high-water cursors, off-route SOL parking, non-overlapping worker loops, terminal dust rows; F5–F7 deferred). P3 (treasury automation/PoR auto-freeze) + P4 (mainnet gates) outstanding. Hard-gated behind `REAL_FUNDS` + a security audit + legal/AML review.
+**Status:** v2, **P0–P3 implemented** (devnet): deposits (USDC + SOL-via-Jupiter), withdrawals (step-up SIWS, atomic debit, sign-once-persist-then-broadcast, boot recovery, manual approval — `WITHDRAWAL_AUTO_PROCESS` + the `WITHDRAWAL_AUTO_APPROVE_MAX_USD` velocity guard gate the auto loop), treasury automation (proof-of-reserves with auto-freeze on breach + manual unfreeze, hot-float cap sweeps reserving pending payouts, shortfall flagging; cold→hot top-ups stay manual multisig ops). Deposit path hardened per the security re-review (`docs/security-notes.md` F1–F5; F6–F7 deferred). P4 (audit/KYC/geofence → mainnet) outstanding. Hard-gated behind `REAL_FUNDS` + a security audit + legal/AML review.
 **Model:** Custodial USDC balance on Solana, per-user HD deposit wallets, server-side Jupiter SOL→USDC auto-swap. Reuses the existing double-entry ledger + perps engine unchanged.
 
 ---
@@ -56,7 +56,7 @@ Flipping `REAL_FUNDS=true` on a DB containing faucet/referral play balances woul
 | `jupiter.ts` | Thin Jupiter quote + swap client (`swapSlippageBps`); server-signs with the derived deposit key; on swap failure leave the deposit in `swapping` for retry — never credit a quote, only actual output. |
 | `treasury.ts` | Hot/cold split — **Squads multisig** cold; capped hot float (`hotWalletMaxUusdc`); sweep deposits to cold, top-up hot for withdrawals; PoR helper. Also the future **treasury-ops** path (house withdrawals of `FEE_REVENUE` go through the same `TREASURY_USDC` accounting). |
 
-Extend the existing **`reconcile.ts`** with a chain check: on-chain treasury USDC ≥ |`TREASURY_USDC`| → else **auto-freeze withdrawals** (deposits may continue).
+The chain check lives in **`services/custody/treasury.ts`** (`treasuryPass`), NOT in `reconcile.ts` — the ledger reconciler stays a pure, side-effect-free invariant prover while PoR needs chain IO + a different side effect: on-chain custody ≥ |`TREASURY_USDC`| → else **auto-freeze withdrawals** (deposits may continue).
 
 ---
 
@@ -109,7 +109,7 @@ Geofence · KYC/AML + sanctions screening · ToS · independent security audit �
 | **P1** ✅ | Deposit path, **USDC-only** (no Jupiter on the critical path): HD address → scanner (`finalized`) → **full-credit first** → idempotent balance-sweep (hot-wallet fee payer). | devnet, allowlisted |
 | **P1.5** ✅ | SOL deposits: detect → Jupiter-swap in place (balance-based) → proceeds credit via the USDC path. Jupiter is **mainnet-only**, so devnet runs park SOL deposits; logic proven by injectable-chain tests. | tests / mainnet dark-launch |
 | **P2** ✅ | Withdrawal path: atomic validate+debit (row lock) → sign-once-persist → **manual admin broadcast/approval first** (simplest, safest dark-launch). Step-up SIWS over (amount, dest, nonce); per-user idempotency; daily velocity cap; boot recovery re-broadcasts the persisted tx (re-signs only when provably dead). `WITHDRAWAL_AUTO_PROCESS` gates the auto loop. | devnet |
-| **P3** | Automation + treasury: hot/cold (Squads), hot-float top-ups for payouts, auto-broadcast with velocity guards, chain reconciler/PoR/auto-freeze. | devnet |
+| **P3** ✅ | Automation + treasury: hot/cold split (cold = Squads address; hot→cold sweeps automated, cold→hot top-ups manual multisig, shortfalls auto-flagged), auto-broadcast gated by `WITHDRAWAL_AUTO_APPROVE_MAX_USD` (larger rows wait for explicit operator approval), chain reconciler: proof-of-reserves (cold + hot + unswept ≥ ledger liabilities) every `TREASURY_PASS_MS` with **auto-freeze** of withdrawals on breach (`system_flags`; deposits continue; unfreeze is manual — `unfreezeWithdrawals`). Deposit sweeps threshold-gated (`MIN_SWEEP_USD`, F5 anti-griefing). | devnet |
 | **P4** | Audit + KYC/AML + geofence → mainnet dark-launch to allowlist → flip `REAL_FUNDS`. | mainnet |
 
 **Net:** the ledger + engine are already the custodial book of record — this adds a deposit-credit, a guarded withdrawal, a per-user HD wallet, Jupiter, and the treasury/security wrapper. No rearchitecture.
@@ -120,7 +120,7 @@ Geofence · KYC/AML + sanctions screening · ToS · independent security audit �
 
 ## Touch list
 
-`ledger.ts` (+`TREASURY_USDC`) · `schema.sql` (3 tables) · `config.ts` (custody config + gate flip + fresh-ledger assert) · `services/custody/{wallet,deposits,withdrawals,jupiter,treasury}.ts` (new) · `routes/wallet.ts` (new) · `index.ts` (3 workers) · `services/history.ts` (reason labels) · `services/reconcile.ts` (chain check) · `packages/shared-types` (request/response schemas) · `apps/web` (deposit/withdraw UI).
+`ledger.ts` (+`TREASURY_USDC`) · `schema.sql` (3 tables) · `config.ts` (custody config + gate flip + fresh-ledger assert) · `services/custody/{wallet,deposits,withdrawals,jupiter,treasury}.ts` (new; PoR/auto-freeze lives in `treasury.ts`) · `routes/wallet.ts` (new) · `index.ts` (3 workers) · `services/history.ts` (reason labels) · `packages/shared-types` (request/response schemas) · `apps/web` (deposit/withdraw UI).
 
 ---
 

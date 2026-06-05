@@ -18,11 +18,10 @@ const { Keypair } = await import('@solana/web3.js');
 const { buildServer } = await import('../server.ts');
 const { initDb } = await import('../db/init.ts');
 const { getDb, closeDb } = await import('../db/client.ts');
-const { getOrCreateUserAccount, getOrCreateSystemAccount, postTxn } = await import('./ledger.ts');
 const { processWithdrawal, recoverInFlight, reverseWithdrawal } = await import('./custody/withdrawals.ts');
 const { reconcile } = await import('./reconcile.ts');
 const { usdc } = await import('../money.ts');
-const { sign, bearer, login: loginAs } = await import('../test-helpers.ts');
+const { sign, bearer, login: loginAs, fund: fundDb, fakeWithdrawChain } = await import('../test-helpers.ts');
 
 await initDb();
 const app = await buildServer();
@@ -30,23 +29,7 @@ const db = await getDb();
 
 const DEST = Keypair.generate().publicKey.toBase58();
 const login = (kp: InstanceType<typeof Keypair>) => loginAs(app, kp);
-
-/** Credit a user as if a deposit had landed (the deposit path itself is covered by custody.test.ts). */
-async function fund(userId: string, amount: bigint) {
-  await db.tx(async (q) => {
-    const coll = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
-    const treasury = await getOrCreateSystemAccount(q, 'TREASURY_USDC');
-    await postTxn(q, {
-      reason: 'DEPOSIT',
-      refType: 'deposit',
-      refId: `test-fund-${userId.slice(0, 8)}`,
-      entries: [
-        { accountId: coll, amount },
-        { accountId: treasury, amount: -amount },
-      ],
-    });
-  });
-}
+const fund = (userId: string, amount: bigint) => fundDb(db, userId, amount);
 
 async function balanceOf(token: string): Promise<bigint> {
   const res = await app.inject({ method: 'GET', url: '/account/balance', headers: bearer(token) });
@@ -83,33 +66,6 @@ async function withdraw(
       signature: sign(message, opts.signer ?? kp),
     },
   });
-}
-
-/** In-memory WithdrawChain: deterministic sigs, togglable broadcast failure, markable dead sigs.
- *  The sig counter is global — chain signatures are globally unique (withdrawals.onchain_sig is
- *  UNIQUE), so fakes across tests must not collide. */
-let sigSeq = 0;
-function fakeWithdrawChain() {
-  const chain = {
-    signed: [] as { dest: string; amountE6: bigint; sig: string }[],
-    broadcasts: [] as string[],
-    deadSigs: new Set<string>(),
-    failBroadcast: false,
-    async signUsdcTransfer(dest: string, amountE6: bigint) {
-      const sig = `wsig-${++sigSeq}`;
-      chain.signed.push({ dest, amountE6, sig });
-      return { signedTxB64: Buffer.from(JSON.stringify({ sig })).toString('base64'), sig };
-    },
-    async broadcast(signedTxB64: string) {
-      if (chain.failBroadcast) throw new Error('simulated RPC outage');
-      chain.broadcasts.push(JSON.parse(Buffer.from(signedTxB64, 'base64').toString()).sig);
-    },
-    async sigStatus(sig: string): Promise<'confirmed' | 'pending' | 'dead'> {
-      if (chain.broadcasts.includes(sig)) return 'confirmed';
-      return chain.deadSigs.has(sig) ? 'dead' : 'pending';
-    },
-  };
-  return chain;
 }
 
 test('withdrawal happy path: step-up -> atomic debit -> process -> confirmed', async () => {

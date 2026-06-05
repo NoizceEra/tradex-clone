@@ -13,9 +13,11 @@ import {
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import { config } from '../../config.ts';
+import { usdc } from '../../money.ts';
 import { swapSolToUsdcViaJupiter } from './jupiter.ts';
 import type { DepositChain, InboundSol, InboundUsdc } from './deposits.ts';
 import type { WithdrawChain } from './withdrawals.ts';
+import type { TreasuryChain } from './treasury.ts';
 
 /**
  * Live Solana implementation of the DepositChain surface (custody P1).
@@ -35,6 +37,16 @@ function hotWallet(): Keypair {
     return Keypair.fromSecretKey(bs58.decode(raw.trim()));
   } catch {
     throw new Error('HOT_WALLET_SECRET is not a valid base58 secret key or JSON byte array');
+  }
+}
+
+/** Finalized USDC balance of `owner`'s ATA; 0 when the ATA doesn't exist yet. */
+async function usdcBalance(conn: Connection, mint: PublicKey, owner: PublicKey, offCurve = false): Promise<bigint> {
+  const ata = getAssociatedTokenAddressSync(mint, owner, offCurve);
+  try {
+    return BigInt((await conn.getTokenAccountBalance(ata, 'finalized')).value.amount);
+  } catch {
+    return 0n;
   }
 }
 
@@ -131,14 +143,9 @@ export function solanaDepositChain(): DepositChain {
     },
 
     async sweepAll(from: Keypair) {
+      const balance = await usdcBalance(conn, usdcMint, from.publicKey);
+      if (balance <= 0n || balance < usdc(config.minSweepUsd)) return null; // sub-threshold balances accumulate (F5)
       const fromAta = getAssociatedTokenAddressSync(usdcMint, from.publicKey);
-      let balance: bigint;
-      try {
-        balance = BigInt((await conn.getTokenAccountBalance(fromAta, 'finalized')).value.amount);
-      } catch {
-        return null; // ATA doesn't exist yet — nothing has ever been deposited here
-      }
-      if (balance <= 0n) return null;
 
       const payer = hotWallet();
       // allowOwnerOffCurve: the treasury may be a Squads multisig PDA
@@ -198,6 +205,34 @@ export function solanaWithdrawChain(): WithdrawChain {
       const tx = Transaction.from(Buffer.from(signedTxB64, 'base64'));
       const valid = (await conn.isBlockhashValid(tx.recentBlockhash!, { commitment: 'finalized' })).value;
       return st || valid ? 'pending' : 'dead';
+    },
+  };
+}
+
+/**
+ * Live Solana implementation of the TreasuryChain surface (custody P3). The cold treasury is a
+ * multisig (Squads) the server cannot sign for — only hot -> cold moves are automated here;
+ * cold -> hot top-ups are a manual multisig operation flagged by the treasury worker.
+ */
+export function solanaTreasuryChain(): TreasuryChain {
+  const conn = new Connection(config.solanaRpcUrl, 'finalized');
+  const usdcMint = new PublicKey(config.usdcMint);
+  const treasury = new PublicKey(config.treasuryPubkey);
+
+  return {
+    hotBalance: () => usdcBalance(conn, usdcMint, hotWallet().publicKey),
+    coldBalance: () => usdcBalance(conn, usdcMint, treasury, true), // the treasury may be a Squads multisig PDA
+
+    async sweepToCold(amountE6: bigint) {
+      const hot = hotWallet();
+      const fromAta = getAssociatedTokenAddressSync(usdcMint, hot.publicKey);
+      const toAta = getAssociatedTokenAddressSync(usdcMint, treasury, true);
+      const tx = new Transaction().add(
+        createAssociatedTokenAccountIdempotentInstruction(hot.publicKey, toAta, treasury, usdcMint),
+        createTransferInstruction(fromAta, toAta, hot.publicKey, amountE6),
+      );
+      tx.feePayer = hot.publicKey;
+      return sendAndConfirmTransaction(conn, tx, [hot], { commitment: 'finalized' });
     },
   };
 }

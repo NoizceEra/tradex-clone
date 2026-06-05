@@ -9,6 +9,8 @@ process.env.NODE_ENV = 'production';
 process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long';
 process.env.DEPOSIT_MASTER_SEED = 'ab'.repeat(32); // deterministic dev seed (32 bytes hex)
 
+const { config } = await import('../config.ts');
+const { usdc } = await import('../money.ts');
 const { getDb, closeDb } = await import('../db/client.ts');
 const { initDb } = await import('../db/init.ts');
 const { getOrCreateDepositAddress, deriveDepositKeypair } = await import('./custody/wallet.ts');
@@ -85,7 +87,8 @@ function fakeChain() {
       if (chain.failSweeps) throw new Error('simulated RPC outage');
       const addr = from.publicKey.toBase58();
       const bal = chain.balances.get(addr) ?? 0n;
-      if (bal <= 0n) return null;
+      // mirrors the live impl: sub-threshold balances accumulate (F5 anti-griefing)
+      if (bal <= 0n || bal < usdc(config.minSweepUsd)) return null;
       chain.balances.set(addr, 0n);
       chain.sweeps.push({ from: addr, amountE6: bal });
       return { sig: `sweep-${chain.sweeps.length}`, amountE6: bal };
@@ -274,6 +277,24 @@ test('dust below the minimum is recorded as terminal ignored — never credited,
   assert.equal(await creditDeposit(db, row.id), null);
   assert.equal((await getUserBalances(db, u)).availableUusdc, 0n);
   assert.equal((await db.query(`SELECT id FROM deposits WHERE onchain_sig = 'sig-dust'`)).rows.length, 1);
+});
+
+test('small credits accumulate until a sweep is economic (anti-griefing threshold)', async () => {
+  const u = await newUser();
+  const addr = await getOrCreateDepositAddress(db, u);
+  const chain = fakeChain();
+
+  // $5 ≥ the $1 deposit minimum but < the $10 sweep threshold: credited in full, NOT swept
+  chain.deposit(addr.address, 'sig-small-1', 5n * 1_000_000n);
+  assert.equal((await scanDeposits(db, chain)).credited, 1);
+  assert.equal((await getUserBalances(db, u)).availableUusdc, 5n * 1_000_000n);
+  assert.equal(chain.sweeps.length, 0); // a fee per dusty deposit would be a griefing vector
+
+  // a further $7 takes the wallet to $12 — now one sweep moves the whole accumulated balance
+  chain.deposit(addr.address, 'sig-small-2', 7n * 1_000_000n);
+  assert.equal((await scanDeposits(db, chain)).credited, 1);
+  assert.deepEqual(chain.sweeps, [{ from: addr.address, amountE6: 12n * 1_000_000n }]);
+  assert.equal((await reconcile(db)).ok, true);
 });
 
 test('the scan cursor advances past processed history and is passed back to the chain', async () => {

@@ -3,6 +3,7 @@ import type { Keypair } from '@solana/web3.js';
 import { config } from '../../config.ts';
 import type { Db } from '../../db/client.ts';
 import { getOrCreateSystemAccount, getOrCreateUserAccount, postTxn } from '../ledger.ts';
+import { usdc } from '../../money.ts';
 import { deriveDepositKeypair } from './wallet.ts';
 
 /**
@@ -75,11 +76,13 @@ export interface DepositChain {
    *  own fee from the SOL). Proceeds land on the wallet's USDC ATA. Returns the swap signature. */
   swapSolToUsdc(from: Keypair, lamports: bigint): Promise<string>;
   /** Sweep the deposit wallet's ENTIRE USDC balance to the treasury (hot wallet = fee payer).
-   *  Naturally idempotent — returns null when there is nothing to sweep. */
+   *  Naturally idempotent — returns null when the balance is below the impl's sweep threshold
+   *  (config.minSweepUsd: don't pay a hot-wallet fee to move dust; small credits accumulate
+   *  until a sweep is economic — F5 anti-griefing). */
   sweepAll(from: Keypair): Promise<SweepResult | null>;
 }
 
-const minDepositE6 = (): bigint => BigInt(Math.round(config.minDepositUsd * 1_000_000));
+const minDepositE6 = (): bigint => usdc(config.minDepositUsd);
 
 /** Kept back from every SOL swap: the swap tx fee + wSOL/ATA rent headroom (0.01 SOL). The
  *  residue stays on the deposit address; an ops sweep can reclaim it later. */
@@ -235,7 +238,8 @@ export async function scanDeposits(
         if (await creditDeposit(db, p.id)) credited++;
       }
 
-      // 4) sweep (idempotent full-balance move; a failure here never blocks credits)
+      // 4) sweep (idempotent full-balance move; a failure here never blocks credits; the impl
+      //    holds sub-threshold balances back — don't pay a fee per dusty deposit, F5)
       const sweep = await chain.sweepAll(deriveDepositKeypair(a.derivation_index));
       if (sweep) {
         await db.query(

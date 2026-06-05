@@ -6,6 +6,7 @@ import { getOrCreateSystemAccount, getOrCreateUserAccount, postTxn } from '../le
 import { isValidPubkey, verifyWithdrawalStepUp } from '../auth.ts';
 import { usdc } from '../../money.ts';
 import type { CustodyLog } from './deposits.ts';
+import { withdrawalsFrozen } from './treasury.ts';
 
 /**
  * Withdrawal pipeline (custody P2). Lifecycle: requested -> signed -> broadcast -> confirmed,
@@ -113,6 +114,10 @@ export async function requestWithdrawal(
     throw new HttpError(400, `minimum withdrawal is ${config.minWithdrawalUsd} USDC`);
   }
 
+  // Auto-freeze gate (custody P3): a proof-of-reserves breach halts new withdrawals app-wide.
+  const frozen = await withdrawalsFrozen(db);
+  if (frozen) throw new HttpError(503, `withdrawals are temporarily frozen: ${frozen}`);
+
   return db.tx(async (q) => {
     // Idempotency anchor (mirrors the engine's order anchor): a duplicate — racing or retried —
     // inserts nothing and replays the winner instead of debiting twice.
@@ -188,7 +193,13 @@ export async function processWithdrawal(db: Db, chain: WithdrawChain, id: string
   const signedTxB64 = await db.tx(async (q) => {
     const w = await getWithdrawal(q, id, true);
     if (!w) throw new HttpError(404, 'withdrawal not found');
-    if (w.status === 'requested') return signAndPersist(q, chain, id, w.dest_address, BigInt(w.amount_e6));
+    if (w.status === 'requested') {
+      // The freeze halts NEW payouts only — already-signed rows below still resume, since their
+      // debit is final and re-broadcasting a signed tx can't be prevented anyway.
+      const frozen = await withdrawalsFrozen(q);
+      if (frozen) throw new HttpError(503, `withdrawals are temporarily frozen: ${frozen}`);
+      return signAndPersist(q, chain, id, w.dest_address, BigInt(w.amount_e6));
+    }
     if (w.status === 'signed' || w.status === 'broadcast') return w.signed_tx!; // resume
     throw new HttpError(409, `withdrawal is ${w.status}`);
   });
@@ -201,13 +212,19 @@ export async function processWithdrawal(db: Db, chain: WithdrawChain, id: string
   return { status: 'confirmed' };
 }
 
-/** Process every accepted-but-unsigned withdrawal (the WITHDRAWAL_AUTO_PROCESS loop). */
+/** The WITHDRAWAL_AUTO_PROCESS loop: process accepted withdrawals up to the auto-approve cap.
+ *  Larger rows (and everything while frozen) sit debited until an operator runs
+ *  processWithdrawal explicitly — the P3 velocity guard on automated payouts. */
 export async function processAllRequested(
   db: Db,
   chain: WithdrawChain,
   log?: CustodyLog,
 ): Promise<{ confirmed: number }> {
-  const r = await db.query<{ id: string }>(`SELECT id FROM withdrawals WHERE status = 'requested' ORDER BY requested_at`);
+  if (await withdrawalsFrozen(db)) return { confirmed: 0 };
+  const r = await db.query<{ id: string }>(
+    `SELECT id FROM withdrawals WHERE status = 'requested' AND amount_e6 <= $1 ORDER BY requested_at`,
+    [usdc(config.withdrawalAutoApproveMaxUsd).toString()],
+  );
   let confirmed = 0;
   for (const { id } of r.rows) {
     try {

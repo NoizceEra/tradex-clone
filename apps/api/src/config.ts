@@ -104,6 +104,7 @@ export const config = {
     ? process.env.SOL_SWAPS_ENABLED === 'true'
     : (process.env.USDC_MINT ?? '') === MAINNET_USDC,
   minDepositUsd: num('MIN_DEPOSIT_USD', 1), // dust below this is ignored (uneconomic to sweep)
+  minSweepUsd: num('MIN_SWEEP_USD', 10), // don't pay a hot-wallet sweep fee for less than this (anti-griefing)
   minWithdrawalUsd: num('MIN_WITHDRAWAL_USD', 5),
   withdrawalDailyCapUsd: num('WITHDRAWAL_DAILY_CAP_USD', 10_000), // per-user velocity cap
   hotWalletMaxUsd: num('HOT_WALLET_MAX_USD', 25_000), // hot float cap; excess swept to cold
@@ -113,6 +114,10 @@ export const config = {
   // Boot recovery of already-signed/broadcast withdrawals always runs (crash safety).
   withdrawalAutoProcess: process.env.WITHDRAWAL_AUTO_PROCESS === 'true',
   withdrawalProcessMs: num('WITHDRAWAL_PROCESS_MS', 30_000), // auto-process cadence (when enabled)
+  // Velocity guard on the auto loop (custody P3): rows above this amount are never auto-broadcast —
+  // they sit 'requested' (already debited) until an operator runs processWithdrawal explicitly.
+  withdrawalAutoApproveMaxUsd: num('WITHDRAWAL_AUTO_APPROVE_MAX_USD', 1_000),
+  treasuryPassMs: num('TREASURY_PASS_MS', 60_000), // proof-of-reserves + hot-float worker cadence
 };
 
 if (config.realFunds) {

@@ -374,6 +374,15 @@ CREATE TABLE IF NOT EXISTS deposit_scan_cursors (
   PRIMARY KEY (address, asset)
 );
 
+-- Operational flags. Today: 'withdrawals_frozen' — set automatically by the treasury worker when
+-- proof-of-reserves breaches (on-chain custody < ledger liabilities); cleared ONLY by an operator
+-- (a PoR breach is an incident, not a self-healing condition). Deposits continue while frozen.
+CREATE TABLE IF NOT EXISTS system_flags (
+  key        TEXT PRIMARY KEY,
+  reason     TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Outbound withdrawals. Two-phase: ledger debited at `signed`, BEFORE broadcast; signed_tx +
 -- onchain_sig persisted at signing so a crash can only re-broadcast the SAME tx (idempotent),
 -- never double-pay. Reversed only when the sig is definitively absent + abandoned.
