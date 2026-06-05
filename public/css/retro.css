@@ -1,0 +1,66 @@
+/* ─── RETRO OVERRIDES FOR GACHADEX LANDING PAGE ─── */
+
+:root {
+  --bg:          #111418 !important;
+  --bg-2:        #1a1e24 !important;
+  --bg-3:        #21262d !important;
+  --border:      #30363d !important;
+  --text:        #e6edf3 !important;
+  --text-muted:  #8b949e !important;
+  --accent:      #c9302c !important;
+  --gold:        #f0c040 !important;
+}
+
+body, h1, h2, h3, h4, h5, h6, p, a, button, input, div, span {
+  font-family: 'Press Start 2P', monospace !important;
+  letter-spacing: 0px !important;
+}
+
+body {
+  background-color: var(--bg) !important;
+  color: var(--text) !important;
+  -webkit-font-smoothing: none !important;
+}
+
+/* Force pixelation on images and SVGs */
+img, svg {
+  image-rendering: pixelated !important;
+}
+
+/* Blocky overrides for buttons and containers */
+button, .btn {
+  border-radius: 0 !important;
+  border: 2px solid var(--border) !important;
+  text-transform: uppercase !important;
+  background-color: var(--bg-2) !important;
+  color: var(--text) !important;
+  box-shadow: 4px 4px 0 #000 !important;
+  transition: none !important;
+}
+
+button:hover, .btn:hover {
+  border-color: var(--gold) !important;
+  color: var(--gold) !important;
+  transform: translateY(2px) translateX(2px) !important;
+  box-shadow: 2px 2px 0 #000 !important;
+}
+
+/* Make inputs boxy */
+input {
+  border-radius: 0 !important;
+  border: 2px solid var(--border) !important;
+  background-color: var(--bg-3) !important;
+  color: var(--text) !important;
+}
+
+input:focus {
+  border-color: var(--accent) !important;
+  outline: none !important;
+}
+
+/* General containers */
+.card, .container, section, article {
+  border-radius: 0 !important;
+  border-color: var(--border) !important;
+  background-color: var(--bg-2) !important;
+}
