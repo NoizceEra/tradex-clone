@@ -144,6 +144,11 @@ export async function redeemReferral(db: Db, userId: string, rawCode: string): P
   let creditedToRedeemer = 0n;
 
   await db.tx(async (q) => {
+    // Serialize concurrent redemptions that share THIS referrer so the anti-farming cap below is
+    // exact: without the lock, N redeemers could all read the same pre-count under READ COMMITTED
+    // and each pay the referrer, busting maxReferralsPaid (TOCTOU). The referrer row always exists.
+    await q.query(`SELECT id FROM users WHERE id=$1 FOR UPDATE`, [referrerId]);
+
     // Attribution is recorded once regardless of whether a bonus is paid (race-safe via IS NULL).
     const set = await q.query<{ id: string }>(
       `UPDATE users SET referred_by=$1, referred_at=now() WHERE id=$2 AND referred_by IS NULL RETURNING id`,

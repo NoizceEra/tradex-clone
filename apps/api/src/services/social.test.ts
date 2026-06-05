@@ -6,6 +6,7 @@ process.env.PGLITE_DIR = 'memory://';
 process.env.DATABASE_URL = '';
 process.env.NODE_ENV = 'production';
 process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long';
+process.env.MAX_REFERRALS_PAID = '1'; // referrer is paid for only their FIRST referral (cap test below)
 
 const { getDb, closeDb } = await import('../db/client.ts');
 const { initDb } = await import('../db/init.ts');
@@ -96,6 +97,25 @@ test('renaming reserves old codes (anti-hijack) + the POKE- namespace; old links
   const redeem = await redeemReferral(db, b, 'hugh-2');
   assert.equal(redeem.credited, true);
   assert.equal((await getReferralInfo(db, b)).referredByCode, 'HUGH-1');
+});
+
+test('referrer is paid only up to the anti-farming cap (no overpay across referrals)', async () => {
+  const referrer = await newUser(); // faucets 10,000
+  const code = (await getReferralInfo(db, referrer)).code;
+  const beforeRef = await getUserBalances(db, referrer);
+
+  const n1 = await newUser();
+  const n2 = await newUser();
+  assert.equal((await redeemReferral(db, n1, code)).credited, true); // 1st: referrer paid (cap=1)
+  assert.equal((await redeemReferral(db, n2, code)).credited, true); // 2nd: redeemer paid, referrer NOT
+
+  const afterRef = await getUserBalances(db, referrer);
+  // referrer received exactly one bonus despite two referrals — the cap held
+  assert.equal((afterRef.availableUusdc - beforeRef.availableUusdc).toString(), usdc(1_000).toString());
+  // both redeemers still got their own bonus
+  assert.equal((await getUserBalances(db, n1)).availableUusdc.toString(), usdc(11_000).toString());
+  assert.equal((await getUserBalances(db, n2)).availableUusdc.toString(), usdc(11_000).toString());
+  assert.equal((await getReferralInfo(db, referrer)).referralsCount, 2); // both attributed
 });
 
 test('leaderboard counts LP capital as account value, not a phantom trading loss', async () => {

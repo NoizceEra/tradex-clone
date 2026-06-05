@@ -91,6 +91,17 @@ CREATE TABLE IF NOT EXISTS referral_code_aliases (
 );
 CREATE INDEX IF NOT EXISTS idx_referral_alias_user ON referral_code_aliases(user_id);
 
+-- Usernames a user previously held (freed by a rename). Reserved permanently so a renamed-away
+-- handle can't be claimed by someone else to impersonate them in chat (the handle is the @mention
+-- target and reply-quote header). Uniqueness of a display_name spans BOTH users.display_name and this
+-- table, case-insensitively (name_lower is the key) — same anti-hijack pattern as referral_code_aliases.
+CREATE TABLE IF NOT EXISTS display_name_aliases (
+  name_lower TEXT PRIMARY KEY,        -- lower(display_name) of a handle this user previously held
+  user_id    TEXT NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_display_alias_user ON display_name_aliases(user_id);
+
 -- Global community chat (a single public room for the MVP).
 CREATE TABLE IF NOT EXISTS chat_messages (
   id         TEXT PRIMARY KEY,
@@ -359,8 +370,8 @@ CREATE TABLE IF NOT EXISTS withdrawals (
   amount_e6       BIGINT NOT NULL,
   status          TEXT NOT NULL DEFAULT 'requested', -- requested|signed|broadcast|confirmed|failed|reversed
   signed_tx       TEXT,                              -- base64 signed tx (persisted before broadcast)
-  onchain_sig     TEXT UNIQUE,                       -- known at signing time
-  idempotency_key TEXT UNIQUE NOT NULL,
+  onchain_sig     TEXT UNIQUE,                       -- known at signing time (globally unique — it's a chain sig)
+  idempotency_key TEXT NOT NULL,                     -- per-user idempotency (see composite index below)
   txn_id          TEXT,                              -- ledger debit txn id (two-phase)
   reason          TEXT,                              -- failure / reversal note
   requested_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -369,3 +380,10 @@ CREATE TABLE IF NOT EXISTS withdrawals (
 );
 CREATE INDEX IF NOT EXISTS idx_withdrawals_user   ON withdrawals(user_id, requested_at);
 CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON withdrawals(status);
+-- Idempotency is scoped per user, not global (mirror orders): a global UNIQUE would let a malicious
+-- user pre-claim a predictable key to grief another user's withdrawal (denial-of-funds) and leak
+-- cross-account activity via the unique-violation error. Drop the legacy global UNIQUE created by the
+-- P0 schema; the composite (user_id, idempotency_key) is the only uniqueness (no-op on a fresh DB).
+ALTER TABLE withdrawals DROP CONSTRAINT IF EXISTS withdrawals_idempotency_key_key;
+DROP INDEX IF EXISTS withdrawals_idempotency_key_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_withdrawals_user_idem ON withdrawals(user_id, idempotency_key);

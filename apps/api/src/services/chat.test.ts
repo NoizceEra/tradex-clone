@@ -63,6 +63,26 @@ test('chat: a user can set a unique username; the handle uses it; dupes/bad form
   await assert.rejects(setUsername(db, b, 'bad name!'), /letters/);
 });
 
+test('chat: a renamed-away username is reserved and cannot be hijacked; owner can reclaim it', async () => {
+  const a = await newUser();
+  const b = await newUser();
+
+  await setUsername(db, a, 'Misty');
+  await setUsername(db, a, 'MistyW'); // 'Misty' is now freed but reserved to `a`
+
+  // nobody else can claim a's current OR freed handle (case-insensitively) and impersonate them
+  await assert.rejects(setUsername(db, b, 'MistyW'), /already taken/); // current
+  await assert.rejects(setUsername(db, b, 'Misty'), /already taken/); // reserved alias
+  await assert.rejects(setUsername(db, b, 'misty'), /already taken/); // ci alias
+
+  // a can rename back to a handle they previously held (their own reserved alias)
+  assert.equal((await setUsername(db, a, 'misty')).username, 'misty');
+  assert.equal((await getProfile(db, a)).handle, 'misty');
+
+  // and now 'MistyW' is freed+reserved to a, still not claimable by b
+  await assert.rejects(setUsername(db, b, 'MistyW'), /already taken/);
+});
+
 test('chat: replying carries the parent context and survives a reload; bad parent rejected', async () => {
   const u = await newUser();
   const parent = await postChat(db, u, 'parent message');

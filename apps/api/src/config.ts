@@ -21,6 +21,25 @@ export const config = {
     .map((s) => s.trim())
     .filter(Boolean),
 
+  // Rate limiting (per client IP). A global ceiling plus tighter per-route caps on the abuse-prone
+  // write/auth endpoints. RATE_LIMIT_DISABLED=true turns it off (used by HTTP tests).
+  rateLimitMax: num('RATE_LIMIT_MAX', 120), // global default: requests per window per IP
+  rateLimitWindowMs: num('RATE_LIMIT_WINDOW_MS', 60_000),
+  rateLimitDisabled: process.env.RATE_LIMIT_DISABLED === 'true',
+  trustProxy: process.env.TRUST_PROXY === 'true', // true behind Vercel/Render/Fly so client IPs are real
+  // Per-route caps (requests per window per IP) — kept here so every security-relevant limit is
+  // visible + tunable in one place (routes reference these via the `rl()` helper in routes/_ratelimit.ts).
+  routeRateLimits: {
+    authNonce: num('RL_AUTH_NONCE', 30),
+    authVerify: num('RL_AUTH_VERIFY', 30),
+    authRefresh: num('RL_AUTH_REFRESH', 60),
+    faucet: num('RL_FAUCET', 10),
+    chatPost: num('RL_CHAT', 20),
+    username: num('RL_USERNAME', 15),
+    referralRedeem: num('RL_REFERRAL_REDEEM', 10),
+    referralCode: num('RL_REFERRAL_CODE', 15), // the "taken?" pre-check is an enumeration oracle
+  },
+
   // Database. Empty => use embedded PGlite (local dev, zero deps).
   // In prod set DATABASE_URL to a managed Postgres (Neon/Supabase).
   databaseUrl: process.env.DATABASE_URL ?? '',

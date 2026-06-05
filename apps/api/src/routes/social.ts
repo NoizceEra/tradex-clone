@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { ReferralRedeemRequest, ReferralCodeRequest } from '@pokex/shared-types';
+import { config } from '../config.ts';
 import { getDb } from '../db/client.ts';
 import { authenticate } from '../plugins/auth.ts';
+import { rl } from './_ratelimit.ts';
 import { verifyAccessToken } from '../services/auth.ts';
 import { getLeaderboard } from '../services/leaderboard.ts';
 import { getReferralInfo, redeemReferral, setReferralCode } from '../services/referral.ts';
@@ -28,12 +30,12 @@ export async function socialRoutes(app: FastifyInstance): Promise<void> {
     return getReferralInfo(await getDb(), req.userId!);
   });
 
-  app.post('/referral/redeem', { preHandler: authenticate }, async (req) => {
+  app.post('/referral/redeem', rl(config.routeRateLimits.referralRedeem, { preHandler: authenticate }), async (req) => {
     const { code } = ReferralRedeemRequest.parse(req.body ?? {});
     return redeemReferral(await getDb(), req.userId!, code);
   });
 
-  app.post('/referral/code', { preHandler: authenticate }, async (req) => {
+  app.post('/referral/code', rl(config.routeRateLimits.referralCode, { preHandler: authenticate }), async (req) => {
     const { code } = ReferralCodeRequest.parse(req.body ?? {});
     return setReferralCode(await getDb(), req.userId!, code);
   });

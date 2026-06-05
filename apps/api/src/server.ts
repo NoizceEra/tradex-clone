@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import { config } from './config.ts';
 import { HttpError } from './errors.ts';
 import { authRoutes } from './routes/auth.ts';
@@ -19,6 +20,8 @@ import { registerWs } from './plugins/ws.ts';
  */
 export async function buildServer(): Promise<FastifyInstance> {
   const app = Fastify({
+    // behind a proxy (Vercel/Render/Fly), trust X-Forwarded-For so rate-limit keys on the real client IP
+    trustProxy: config.trustProxy,
     logger: {
       level: config.env === 'production' ? 'info' : 'debug',
       transport:
@@ -33,11 +36,26 @@ export async function buildServer(): Promise<FastifyInstance> {
     credentials: true,
   });
 
+  // Global per-IP rate limit. Tighter caps on auth + write endpoints are set per-route via
+  // `config.rateLimit` (see routes/*). Registered before routes so it covers all of them.
+  if (!config.rateLimitDisabled) {
+    await app.register(rateLimit, {
+      global: true,
+      max: config.rateLimitMax,
+      timeWindow: config.rateLimitWindowMs,
+    });
+  }
+
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof HttpError) return reply.code(err.statusCode).send({ error: err.message });
     // zod ValidationError (may be a different zod instance than ours, so check structurally)
     if (err && (err as { name?: string }).name === 'ZodError') {
       return reply.code(400).send({ error: 'validation failed', issues: (err as { issues?: unknown }).issues });
+    }
+    // honor framework/plugin errors carrying a 4xx status (e.g. @fastify/rate-limit -> 429, body-parse 400s)
+    const sc = (err as { statusCode?: number }).statusCode;
+    if (typeof sc === 'number' && sc >= 400 && sc < 500) {
+      return reply.code(sc).send({ error: (err as { message?: string }).message ?? 'request rejected' });
     }
     req.log.error(err);
     return reply.code(500).send({ error: 'internal error' });

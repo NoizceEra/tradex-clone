@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { FaucetRequest } from '@pokex/shared-types';
+import { config } from '../config.ts';
 import { getDb } from '../db/client.ts';
 import { authenticate } from '../plugins/auth.ts';
+import { rl } from './_ratelimit.ts';
 import { creditFaucet, getUserBalances } from '../services/faucet.ts';
 import { getUserUnrealizedPnl } from '../services/engine.ts';
 
@@ -17,7 +19,7 @@ export async function accountRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.post('/faucet', { preHandler: authenticate }, async (req) => {
+  app.post('/faucet', rl(config.routeRateLimits.faucet, { preHandler: authenticate }), async (req) => {
     const { amountUsd } = FaucetRequest.parse(req.body ?? {});
     const r = await creditFaucet(await getDb(), req.userId!, amountUsd);
     return { ok: true, txnId: r.txnId, availableUusdc: r.availableUusdc.toString() };
