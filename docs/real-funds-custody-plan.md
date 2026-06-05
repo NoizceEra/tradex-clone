@@ -1,6 +1,6 @@
 # Real-Funds Custody Plan — deposits, withdrawals & treasury (v2, reviewed)
 
-**Status:** Draft v2 (adversarially reviewed; see Review log at bottom). Not started. Hard-gated behind `REAL_FUNDS` + a security audit + legal/AML review.
+**Status:** v2, **P0–P2 implemented** (devnet): deposits (USDC + SOL-via-Jupiter), withdrawals (step-up SIWS, atomic debit, sign-once-persist-then-broadcast, boot recovery, manual approval — `WITHDRAWAL_AUTO_PROCESS` gates the P3 loop). P3 (treasury automation/PoR auto-freeze) + P4 (mainnet gates) outstanding. Hard-gated behind `REAL_FUNDS` + a security audit + legal/AML review.
 **Model:** Custodial USDC balance on Solana, per-user HD deposit wallets, server-side Jupiter SOL→USDC auto-swap. Reuses the existing double-entry ledger + perps engine unchanged.
 
 ---
@@ -105,11 +105,11 @@ Geofence · KYC/AML + sanctions screening · ToS · independent security audit �
 
 | Phase | Scope | Network |
 |---|---|---|
-| **P0** (unblocked now) | `TREASURY_USDC` account + the 3 tables + config scaffolding + fresh-ledger startup assertion. Zero behavior change. | — |
-| **P1** | Deposit path, **USDC-only** (no Jupiter on the critical path): HD address → scanner (`finalized`) → **full-credit first** → idempotent balance-sweep (hot-wallet fee payer). | devnet, allowlisted |
-| **P1.5** | SOL deposits: detect → Jupiter-swap in place (balance-based) → proceeds credit via the USDC path. Jupiter is **mainnet-only**, so devnet runs park SOL deposits; logic proven by injectable-chain tests. | tests / mainnet dark-launch |
-| **P2** | Withdrawal path: atomic validate+debit (row lock) → sign-once-persist → **manual admin broadcast/approval first** (simplest, safest dark-launch). | devnet |
-| **P3** | Automation + treasury: hot/cold (Squads), auto-broadcast with velocity guards, chain reconciler/PoR/auto-freeze. | devnet |
+| **P0** ✅ | `TREASURY_USDC` account + the 3 tables + config scaffolding + fresh-ledger startup assertion. Zero behavior change. | — |
+| **P1** ✅ | Deposit path, **USDC-only** (no Jupiter on the critical path): HD address → scanner (`finalized`) → **full-credit first** → idempotent balance-sweep (hot-wallet fee payer). | devnet, allowlisted |
+| **P1.5** ✅ | SOL deposits: detect → Jupiter-swap in place (balance-based) → proceeds credit via the USDC path. Jupiter is **mainnet-only**, so devnet runs park SOL deposits; logic proven by injectable-chain tests. | tests / mainnet dark-launch |
+| **P2** ✅ | Withdrawal path: atomic validate+debit (row lock) → sign-once-persist → **manual admin broadcast/approval first** (simplest, safest dark-launch). Step-up SIWS over (amount, dest, nonce); per-user idempotency; daily velocity cap; boot recovery re-broadcasts the persisted tx (re-signs only when provably dead). `WITHDRAWAL_AUTO_PROCESS` gates the auto loop. | devnet |
+| **P3** | Automation + treasury: hot/cold (Squads), hot-float top-ups for payouts, auto-broadcast with velocity guards, chain reconciler/PoR/auto-freeze. | devnet |
 | **P4** | Audit + KYC/AML + geofence → mainnet dark-launch to allowlist → flip `REAL_FUNDS`. | mainnet |
 
 **Net:** the ledger + engine are already the custodial book of record — this adds a deposit-credit, a guarded withdrawal, a per-user HD wallet, Jupiter, and the treasury/security wrapper. No rearchitecture.

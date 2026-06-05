@@ -3,7 +3,8 @@ import { getDb } from '../db/client.ts';
 import { authenticate } from '../plugins/auth.ts';
 import { getOrderHistory, getTradeHistory, getTransactionHistory, getPositionHistory } from '../services/history.ts';
 
-const lim = (req: { query?: unknown }) => Number((req.query as { limit?: string } | undefined)?.limit) || undefined;
+/** Parse an optional ?limit= query param (shared with the wallet lifecycle feed). */
+export const lim = (req: { query?: unknown }) => Number((req.query as { limit?: string } | undefined)?.limit) || undefined;
 
 export async function historyRoutes(app: FastifyInstance): Promise<void> {
   app.get('/history/orders', { preHandler: authenticate }, async (req) => ({

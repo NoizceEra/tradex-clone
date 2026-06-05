@@ -47,6 +47,9 @@ export interface SweepResult {
   amountE6: bigint;
 }
 
+/** Minimal logger surface the custody workers take (a FastifyBaseLogger satisfies it). */
+export type CustodyLog = { error: (obj: unknown, msg: string) => void };
+
 /** Chain-facing surface, injectable for tests (same pattern as oracle.ts's CardFetcher). */
 export interface DepositChain {
   /** Finalized inbound USDC transfers to `address`, oldest first. `knownSigs` lets impls skip work. */
@@ -111,7 +114,7 @@ export async function creditDeposit(db: Db, depositId: string): Promise<string |
 export async function scanDeposits(
   db: Db,
   chain: DepositChain,
-  log?: { error: (obj: unknown, msg: string) => void },
+  log?: CustodyLog,
 ): Promise<{ credited: number }> {
   const addrs = await db.query<{ user_id: string; address: string; derivation_index: number }>(
     `SELECT user_id, address, derivation_index FROM deposit_addresses`,

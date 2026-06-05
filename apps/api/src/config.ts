@@ -38,6 +38,8 @@ export const config = {
     username: num('RL_USERNAME', 15),
     referralRedeem: num('RL_REFERRAL_REDEEM', 10),
     referralCode: num('RL_REFERRAL_CODE', 15), // the "taken?" pre-check is an enumeration oracle
+    withdraw: num('RL_WITHDRAW', 10),
+    withdrawNonce: num('RL_WITHDRAW_NONCE', 20),
   },
 
   // Database. Empty => use embedded PGlite (local dev, zero deps).
@@ -98,6 +100,11 @@ export const config = {
   withdrawalDailyCapUsd: num('WITHDRAWAL_DAILY_CAP_USD', 10_000), // per-user velocity cap
   hotWalletMaxUsd: num('HOT_WALLET_MAX_USD', 25_000), // hot float cap; excess swept to cold
   depositScanMs: num('DEPOSIT_SCAN_MS', 30_000), // deposit scanner cadence
+  // P2 ships withdrawals with MANUAL admin approval: 'requested' rows are only signed/broadcast when
+  // an operator runs processWithdrawal (or this flag turns on the automated loop — custody P3).
+  // Boot recovery of already-signed/broadcast withdrawals always runs (crash safety).
+  withdrawalAutoProcess: process.env.WITHDRAWAL_AUTO_PROCESS === 'true',
+  withdrawalProcessMs: num('WITHDRAWAL_PROCESS_MS', 30_000), // auto-process cadence (when enabled)
 };
 
 if (config.realFunds) {

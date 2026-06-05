@@ -102,6 +102,21 @@ export const FaucetRequest = z.object({
   amountUsd: z.number().positive().max(100_000).default(10_000),
 });
 
+// --- real-funds wallet (custody P2) -------------------------------------------
+// Withdrawals need a step-up: the wallet signs a server-rendered message over the EXACT
+// (amount, dest, nonce) — get the message from /wallet/withdraw/nonce, sign it, submit both.
+
+export const WithdrawNonceRequest = z.object({
+  amountE6: MicroStr, // micro-USDC, canonical (no float rounding between nonce + submit)
+  dest: z.string().min(32).max(64), // Solana address; validity checked server-side
+});
+
+export const WithdrawRequest = WithdrawNonceRequest.extend({
+  idempotencyKey: z.string().min(8),
+  message: z.string(), // the signed step-up message (server re-renders + verifies)
+  signature: z.string(), // base58 wallet signature over `message`
+});
+
 // --- social (referrals) ------------------------------------------------------
 
 export const ReferralRedeemRequest = z.object({

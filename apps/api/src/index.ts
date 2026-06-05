@@ -4,7 +4,8 @@ import { ingest } from './services/oracle.ts';
 import { accrueFunding } from './services/funding.ts';
 import { liquidateEligible, haltStaleMarkets } from './services/engine.ts';
 import { scanDeposits } from './services/custody/deposits.ts';
-import { solanaDepositChain } from './services/custody/solana.ts';
+import { recoverInFlight, processAllRequested } from './services/custody/withdrawals.ts';
+import { solanaDepositChain, solanaWithdrawChain } from './services/custody/solana.ts';
 import type { Db } from './db/client.ts';
 import type { FastifyBaseLogger } from 'fastify';
 import { config } from './config.ts';
@@ -44,6 +45,27 @@ function startDepositScanner(db: Db, log: FastifyBaseLogger) {
   setInterval(run, config.depositScanMs);
 }
 
+/** Real-funds only (custody P2): recover in-flight withdrawals on boot (crash safety — always),
+ *  then process accepted ones on an interval only when WITHDRAWAL_AUTO_PROCESS is on (P2 default
+ *  is manual operator approval via processWithdrawal). */
+function startWithdrawalWorker(db: Db, log: FastifyBaseLogger) {
+  const chain = solanaWithdrawChain();
+  recoverInFlight(db, chain, log)
+    .then((r) => {
+      if (r.recovered > 0) log.info(r, 'in-flight withdrawals recovered');
+    })
+    .catch((e) => log.error(e, 'withdrawal boot recovery failed'));
+  if (config.withdrawalAutoProcess) {
+    const run = () =>
+      processAllRequested(db, chain, log)
+        .then((r) => {
+          if (r.confirmed > 0) log.info(r, 'withdrawals processed');
+        })
+        .catch((e) => log.error(e, 'withdrawal processing failed (will retry)'));
+    setInterval(run, config.withdrawalProcessMs);
+  }
+}
+
 function startLiquidationLoop(db: Db, log: FastifyBaseLogger) {
   const run = async () => {
     try {
@@ -67,7 +89,10 @@ async function main() {
     startOracleLoop(db, app.log);
     startFundingLoop(db, app.log);
     startLiquidationLoop(db, app.log);
-    if (config.realFunds) startDepositScanner(db, app.log);
+    if (config.realFunds) {
+      startDepositScanner(db, app.log);
+      startWithdrawalWorker(db, app.log);
+    }
   } catch (err) {
     app.log.error(err);
     process.exit(1);

@@ -8,36 +8,17 @@ process.env.NODE_ENV = 'production';
 process.env.JWT_SECRET = 'test-jwt-secret-at-least-32-characters-long';
 
 const { Keypair } = await import('@solana/web3.js');
-const nacl = (await import('tweetnacl')).default;
-const bs58 = (await import('bs58')).default;
 const { buildServer } = await import('../server.ts');
 const { initDb } = await import('../db/init.ts');
 const { getDb, closeDb } = await import('../db/client.ts');
 const { reconcile } = await import('./reconcile.ts');
 const { usdc } = await import('../money.ts');
+const { sign, bearer, login: loginAs } = await import('../test-helpers.ts');
 
 await initDb();
 const app = await buildServer();
 
-function sign(message: string, kp: InstanceType<typeof Keypair>): string {
-  return bs58.encode(nacl.sign.detached(new TextEncoder().encode(message), kp.secretKey));
-}
-
-async function login(kp: InstanceType<typeof Keypair>) {
-  const pubkey = kp.publicKey.toBase58();
-  const nonceRes = await app.inject({ method: 'POST', url: '/auth/nonce', payload: { pubkey } });
-  assert.equal(nonceRes.statusCode, 200);
-  const { message } = nonceRes.json();
-  const verifyRes = await app.inject({
-    method: 'POST',
-    url: '/auth/verify',
-    payload: { pubkey, message, signature: sign(message, kp) },
-  });
-  assert.equal(verifyRes.statusCode, 200, verifyRes.body);
-  return verifyRes.json() as { accessToken: string; refreshToken: string; user: { id: string; pubkey: string } };
-}
-
-const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
+const login = (kp: InstanceType<typeof Keypair>) => loginAs(app, kp);
 
 before(() => {});
 
@@ -97,6 +78,20 @@ test('refresh rotates, and reusing the old refresh token revokes the family', as
   // the rotated token is now also revoked (family-wide)
   const after = await app.inject({ method: 'POST', url: '/auth/refresh', payload: { refreshToken: rotated } });
   assert.equal(after.statusCode, 401);
+});
+
+test('real-funds wallet endpoints are 403 in play-money mode', async () => {
+  const kp = Keypair.generate();
+  const { accessToken } = await login(kp);
+  for (const [method, url] of [
+    ['GET', '/wallet/deposit-address'],
+    ['POST', '/wallet/withdraw/nonce'],
+    ['POST', '/wallet/withdraw'],
+    ['GET', '/wallet/transactions'],
+  ] as const) {
+    const res = await app.inject({ method, url, headers: bearer(accessToken), payload: method === 'POST' ? {} : undefined });
+    assert.equal(res.statusCode, 403, `${method} ${url}: ${res.body}`);
+  }
 });
 
 test('ledger still reconciles after auth + faucet activity', async () => {

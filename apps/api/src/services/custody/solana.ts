@@ -8,6 +8,7 @@ import {
 import { config } from '../../config.ts';
 import { swapSolToUsdcViaJupiter } from './jupiter.ts';
 import type { DepositChain, InboundSol, InboundUsdc } from './deposits.ts';
+import type { WithdrawChain } from './withdrawals.ts';
 
 /**
  * Live Solana implementation of the DepositChain surface (custody P1).
@@ -106,6 +107,54 @@ export function solanaDepositChain(): DepositChain {
       tx.feePayer = payer.publicKey;
       const sig = await sendAndConfirmTransaction(conn, tx, [payer, from], { commitment: 'finalized' });
       return { sig, amountE6: balance };
+    },
+  };
+}
+
+/**
+ * Live Solana implementation of the WithdrawChain surface (custody P2). Payouts go from the
+ * hot wallet's USDC ATA to the destination (hot float topped up from the treasury — custody P3);
+ * the hot wallet pays the network fee and the destination ATA's rent if it doesn't exist yet.
+ */
+export function solanaWithdrawChain(): WithdrawChain {
+  const conn = new Connection(config.solanaRpcUrl, 'finalized');
+  const usdcMint = new PublicKey(config.usdcMint);
+
+  return {
+    async signUsdcTransfer(dest: string, amountE6: bigint) {
+      const hot = hotWallet();
+      const destOwner = new PublicKey(dest);
+      const fromAta = getAssociatedTokenAddressSync(usdcMint, hot.publicKey);
+      // allowOwnerOffCurve: the user may withdraw to a program-owned address (e.g. a multisig
+      // vault) — the step-up signature binds the exact destination either way.
+      const toAta = getAssociatedTokenAddressSync(usdcMint, destOwner, true);
+      const tx = new Transaction().add(
+        createAssociatedTokenAccountIdempotentInstruction(hot.publicKey, toAta, destOwner, usdcMint),
+        createTransferInstruction(fromAta, toAta, hot.publicKey, amountE6),
+      );
+      tx.feePayer = hot.publicKey;
+      tx.recentBlockhash = (await conn.getLatestBlockhash('finalized')).blockhash;
+      tx.sign(hot); // local signing only; the tx signature is now fixed
+      return { signedTxB64: tx.serialize().toString('base64'), sig: bs58.encode(tx.signature!) };
+    },
+
+    async broadcast(signedTxB64: string) {
+      const raw = Buffer.from(signedTxB64, 'base64');
+      const sig = await conn.sendRawTransaction(raw);
+      const bh = await conn.getLatestBlockhash('finalized');
+      await conn.confirmTransaction(
+        { signature: sig, blockhash: bh.blockhash, lastValidBlockHeight: bh.lastValidBlockHeight },
+        'finalized',
+      );
+    },
+
+    async sigStatus(sig: string, signedTxB64: string) {
+      const st = (await conn.getSignatureStatuses([sig], { searchTransactionHistory: true })).value[0];
+      if (st?.confirmationStatus === 'finalized') return 'confirmed';
+      // Not finalized: the tx can still land only while its blockhash is valid.
+      const tx = Transaction.from(Buffer.from(signedTxB64, 'base64'));
+      const valid = (await conn.isBlockhashValid(tx.recentBlockhash!, { commitment: 'finalized' })).value;
+      return st || valid ? 'pending' : 'dead';
     },
   };
 }

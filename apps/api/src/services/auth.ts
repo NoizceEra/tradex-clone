@@ -5,7 +5,8 @@ import nacl from 'tweetnacl';
 import { PublicKey } from '@solana/web3.js';
 import { config } from '../config.ts';
 import { HttpError } from '../errors.ts';
-import type { Db } from '../db/client.ts';
+import type { Db, Queryer } from '../db/client.ts';
+import { fmtUusdc } from '../money.ts';
 import { assignReferralCode } from './referral.ts';
 
 /**
@@ -30,6 +31,25 @@ export function buildLoginMessage(pubkey: string, nonce: string): string {
   ].join('\n');
 }
 
+/**
+ * Withdrawal step-up message (custody P2). A withdrawal needs a FRESH wallet signature over the
+ * exact amount + destination — a stolen access/refresh token alone can't move funds. Deterministic
+ * from (pubkey, amountE6, dest, nonce) and re-rendered server-side at verify time, like login.
+ */
+export function buildWithdrawalMessage(pubkey: string, p: { amountE6: bigint; dest: string; nonce: string }): string {
+  return [
+    'PokeX withdrawal authorization:',
+    pubkey,
+    '',
+    `Authorize a withdrawal of ${fmtUusdc(p.amountE6)} USDC to:`,
+    p.dest,
+    '',
+    'Statement: This signature authorizes ONLY the single withdrawal above (exact amount and destination).',
+    `Domain: ${config.authDomain}`,
+    `Nonce: ${p.nonce}`,
+  ].join('\n');
+}
+
 export function isValidPubkey(pubkey: string): boolean {
   try {
     // eslint-disable-next-line no-new
@@ -47,7 +67,8 @@ export interface LoginResult {
   user: { id: string; pubkey: string };
 }
 
-export async function createNonce(db: Db, pubkey: string): Promise<{ nonce: string; message: string }> {
+/** Issue a single-use, 5-minute challenge nonce bound to a pubkey (login + withdrawal step-up). */
+async function insertNonce(db: Db, pubkey: string): Promise<string> {
   if (!isValidPubkey(pubkey)) throw new HttpError(400, 'invalid pubkey');
   const nonce = bs58.encode(randomBytes(24));
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
@@ -56,7 +77,79 @@ export async function createNonce(db: Db, pubkey: string): Promise<{ nonce: stri
     pubkey,
     expiresAt.toISOString(),
   ]);
+  return nonce;
+}
+
+export async function createNonce(db: Db, pubkey: string): Promise<{ nonce: string; message: string }> {
+  const nonce = await insertNonce(db, pubkey);
   return { nonce, message: buildLoginMessage(pubkey, nonce) };
+}
+
+export async function createWithdrawalNonce(
+  db: Db,
+  pubkey: string,
+  p: { amountE6: bigint; dest: string },
+): Promise<{ nonce: string; message: string }> {
+  if (!isValidPubkey(p.dest)) throw new HttpError(400, 'invalid destination address');
+  const nonce = await insertNonce(db, pubkey);
+  return { nonce, message: buildWithdrawalMessage(pubkey, { ...p, nonce }) };
+}
+
+/**
+ * Verify a wallet signature over a server-rendered, single-use nonce message, then atomically claim
+ * the nonce (replay/race defense). `render(nonce)` rebuilds the exact message the server expects, so
+ * a tampered client message can't change what is actually checked. Shared by login + withdrawal step-up.
+ * Takes a Queryer so it can run inside a caller's transaction (the withdrawal flow claims the nonce
+ * atomically with the withdrawal row — a rolled-back request leaves the nonce retryable).
+ */
+async function verifyNonceSignature(
+  db: Queryer,
+  pubkey: string,
+  message: string,
+  signature: string,
+  render: (nonce: string) => string,
+): Promise<void> {
+  if (!isValidPubkey(pubkey)) throw new HttpError(400, 'invalid pubkey');
+  const nonce = message.match(/^Nonce: (.+)$/m)?.[1];
+  if (!nonce) throw new HttpError(400, 'message missing nonce');
+
+  const row = await db.query<{ pubkey: string; used: boolean; expired: boolean }>(
+    `SELECT pubkey, used, (expires_at < now()) AS expired FROM auth_nonces WHERE nonce = $1`,
+    [nonce],
+  );
+  const n = row.rows[0];
+  if (!n || n.pubkey !== pubkey || n.used || n.expired) throw new HttpError(401, 'invalid or expired nonce');
+
+  // Verify the signature against the SERVER-rendered message (not the client's text).
+  const expected = render(nonce);
+  let ok = false;
+  try {
+    ok = nacl.sign.detached.verify(
+      new TextEncoder().encode(expected),
+      bs58.decode(signature),
+      new PublicKey(pubkey).toBytes(),
+    );
+  } catch {
+    ok = false;
+  }
+  if (!ok) throw new HttpError(401, 'signature verification failed');
+
+  // Atomically claim the nonce (defends against replay/races).
+  const claim = await db.query<{ nonce: string }>(
+    `UPDATE auth_nonces SET used = true WHERE nonce = $1 AND used = false RETURNING nonce`,
+    [nonce],
+  );
+  if (claim.rows.length === 0) throw new HttpError(401, 'nonce already used');
+}
+
+/** Withdrawal step-up: a fresh wallet signature over the exact (amount, dest) — token theft can't withdraw. */
+export async function verifyWithdrawalStepUp(
+  db: Queryer,
+  p: { pubkey: string; amountE6: bigint; dest: string; message: string; signature: string },
+): Promise<void> {
+  await verifyNonceSignature(db, p.pubkey, p.message, p.signature, (nonce) =>
+    buildWithdrawalMessage(p.pubkey, { amountE6: p.amountE6, dest: p.dest, nonce }),
+  );
 }
 
 async function mintAccessToken(userId: string, pubkey: string, sid: string): Promise<string> {
@@ -96,38 +189,7 @@ export async function verifyAndLogin(
   input: { pubkey: string; message: string; signature: string },
 ): Promise<LoginResult> {
   const { pubkey, message, signature } = input;
-  if (!isValidPubkey(pubkey)) throw new HttpError(400, 'invalid pubkey');
-
-  const nonce = message.match(/^Nonce: (.+)$/m)?.[1];
-  if (!nonce) throw new HttpError(400, 'message missing nonce');
-
-  const row = await db.query<{ pubkey: string; used: boolean; expired: boolean }>(
-    `SELECT pubkey, used, (expires_at < now()) AS expired FROM auth_nonces WHERE nonce = $1`,
-    [nonce],
-  );
-  const n = row.rows[0];
-  if (!n || n.pubkey !== pubkey || n.used || n.expired) throw new HttpError(401, 'invalid or expired nonce');
-
-  // Verify the signature against the SERVER-rendered message (not the client's text).
-  const expected = buildLoginMessage(pubkey, nonce);
-  let ok = false;
-  try {
-    ok = nacl.sign.detached.verify(
-      new TextEncoder().encode(expected),
-      bs58.decode(signature),
-      new PublicKey(pubkey).toBytes(),
-    );
-  } catch {
-    ok = false;
-  }
-  if (!ok) throw new HttpError(401, 'signature verification failed');
-
-  // Atomically claim the nonce (defends against replay/races).
-  const claim = await db.query<{ nonce: string }>(
-    `UPDATE auth_nonces SET used = true WHERE nonce = $1 AND used = false RETURNING nonce`,
-    [nonce],
-  );
-  if (claim.rows.length === 0) throw new HttpError(401, 'nonce already used');
+  await verifyNonceSignature(db, pubkey, message, signature, (nonce) => buildLoginMessage(pubkey, nonce));
 
   const userId = await upsertUser(db, pubkey);
   const { sid, refreshToken } = await createSession(db, userId);

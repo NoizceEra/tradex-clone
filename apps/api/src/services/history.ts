@@ -112,6 +112,9 @@ const TXN_TYPE: Record<string, 'Transfer' | 'Realized PNL' | 'Funding Fee' | 'Co
   REFERRAL_BONUS: 'Transfer',
   LP_DEPOSIT: 'Transfer',
   LP_WITHDRAW: 'Transfer',
+  DEPOSIT: 'Transfer',
+  WITHDRAWAL: 'Transfer',
+  WITHDRAWAL_REVERSAL: 'Transfer',
   REALIZED_PNL: 'Realized PNL',
   FUNDING: 'Funding Fee',
   OPEN_FEE: 'Commission',
@@ -147,6 +150,38 @@ export async function getTransactionHistory(db: Db, userId: string, limit?: numb
     amountUusdc: e.amt,
     symbol: e.symbol,
   }));
+}
+
+/** On-chain lifecycle of real-funds deposits + withdrawals (custody P1/P2) — the chain-facing
+ *  status the ledger doesn't carry (detected/swapped/credited; requested/signed/confirmed/...). */
+export interface WalletTransactionRow {
+  id: string;
+  kind: 'deposit' | 'withdrawal';
+  asset: string; // 'USDC' | 'SOL' (deposits may arrive as SOL; withdrawals are USDC-only)
+  amountRaw: string; // raw units of `asset` (lamports / micro-USDC)
+  usdcE6: string | null; // credited proceeds (deposits) / payout amount (withdrawals)
+  status: string;
+  sig: string | null;
+  dest: string | null; // withdrawals only
+  time: string;
+}
+
+export async function getWalletTransactions(db: Db, userId: string, limit?: number): Promise<WalletTransactionRow[]> {
+  const r = await db.query<WalletTransactionRow>(
+    `SELECT * FROM (
+       SELECT id, 'deposit' AS kind, asset, amount_in_raw::text AS "amountRaw",
+              usdc_credited_e6::text AS "usdcE6", status, onchain_sig AS sig, NULL AS dest,
+              observed_at AS time
+       FROM deposits WHERE user_id = $1
+       UNION ALL
+       SELECT id, 'withdrawal' AS kind, 'USDC' AS asset, amount_e6::text AS "amountRaw",
+              amount_e6::text AS "usdcE6", status, onchain_sig AS sig, dest_address AS dest,
+              requested_at AS time
+       FROM withdrawals WHERE user_id = $1
+     ) t ORDER BY time DESC LIMIT $2`,
+    [userId, clampLimit(limit)],
+  );
+  return r.rows;
 }
 
 export interface PositionHistoryRow {
