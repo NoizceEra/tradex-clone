@@ -15,10 +15,12 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // restore an existing session on load
+  // Restore an existing session on load. On failure, do NOT clear tokens here: a definitive
+  // refresh-token rejection already cleared them inside refreshSession; anything else (429,
+  // 5xx, network blip) is transient and the next load should retry, not log out.
   useEffect(() => {
     if (api.hasSession()) {
-      api.authMe().then(setUser).catch(() => api.clearTokens());
+      api.authMe().then(setUser).catch(() => {});
     }
   }, []);
 

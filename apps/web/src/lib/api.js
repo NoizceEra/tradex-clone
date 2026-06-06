@@ -14,7 +14,9 @@ function setTokens({ accessToken: at, refreshToken: rt }) {
   accessToken = at ?? accessToken;
   if (rt) localStorage.setItem(REFRESH_KEY, rt);
 }
-export function clearTokens() {
+// Module-private on purpose: ending the session is decided HERE (definitive refresh rejection
+// in refreshSession, or an explicit logout) — never by callers reacting to transient failures.
+function clearTokens() {
   accessToken = null;
   localStorage.removeItem(REFRESH_KEY);
 }
@@ -57,13 +59,21 @@ export function refreshSession() {
   refreshing = (async () => {
     const refreshToken = getRefreshToken();
     if (!refreshToken) return false;
-    const res = await raw('/auth/refresh', { method: 'POST', body: { refreshToken } });
-    if (!res.ok) {
-      clearTokens();
-      return false;
+    let res;
+    try {
+      res = await raw('/auth/refresh', { method: 'POST', body: { refreshToken } });
+    } catch {
+      return false; // network blip — keep the session; a later request retries the refresh
     }
-    setTokens(await res.json());
-    return true;
+    if (res.ok) {
+      setTokens(await res.json());
+      return true;
+    }
+    // Only a DEFINITIVE rejection (expired/revoked/reuse-detected/malformed) ends the session.
+    // Transient failures — 429 from the rate limiter, 5xx, proxies — must keep the refresh
+    // token, or a blip silently logs the user out.
+    if (res.status === 400 || res.status === 401 || res.status === 403) clearTokens();
+    return false;
   })().finally(() => {
     refreshing = null;
   });
