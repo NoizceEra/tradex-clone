@@ -184,6 +184,30 @@ export async function requestWithdrawal(
   });
 }
 
+export interface WithdrawalListRow {
+  id: string;
+  pubkey: string;
+  dest_address: string;
+  amount_e6: string;
+  status: string;
+  reason: string | null;
+  requested_at: string;
+  onchain_sig: string | null;
+}
+
+/** The operator's withdrawal queue view: rows in `status`, newest first, with the owner pubkey. */
+export async function listWithdrawals(db: Queryer, status: string, limit = 100): Promise<WithdrawalListRow[]> {
+  const n = Math.min(Math.max(limit, 1), 200);
+  const r = await db.query<WithdrawalListRow>(
+    `SELECT w.id, u.solana_pubkey AS pubkey, w.dest_address, w.amount_e6::text AS amount_e6,
+            w.status, w.reason, w.requested_at, w.onchain_sig
+     FROM withdrawals w JOIN users u ON u.id = w.user_id
+     WHERE w.status = $1 ORDER BY w.requested_at DESC LIMIT $2`,
+    [status, n],
+  );
+  return r.rows;
+}
+
 /**
  * Sign + broadcast one accepted withdrawal (operator action in P2; the auto loop in P3).
  * Signing happens under the row lock and persists signed_tx + sig in the same transaction —

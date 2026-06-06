@@ -15,7 +15,7 @@ const { treasuryPass, withdrawalsFrozen, unfreezeWithdrawals } = await import('.
 const { requestWithdrawal, processWithdrawal, processAllRequested } = await import('./custody/withdrawals.ts');
 const { reconcile } = await import('./reconcile.ts');
 const { usdc } = await import('../money.ts');
-const { fund: fundDb, fakeWithdrawChain } = await import('../test-helpers.ts');
+const { fund: fundDb, fakeWithdrawChain, fakeTreasury } = await import('../test-helpers.ts');
 
 await initDb();
 const db = await getDb();
@@ -45,28 +45,6 @@ async function insertRequested(userId: string, amountE6: bigint): Promise<string
     [id, userId, DEST, amountE6.toString(), `t-idem-${id.slice(0, 8)}`],
   );
   return id;
-}
-
-/** In-memory TreasuryChain with mutable balances. */
-function fakeTreasury(init: { hot?: bigint; cold?: bigint } = {}) {
-  const t = {
-    hot: init.hot ?? 0n,
-    cold: init.cold ?? 0n,
-    sweeps: [] as bigint[],
-    async hotBalance() {
-      return t.hot;
-    },
-    async coldBalance() {
-      return t.cold;
-    },
-    async sweepToCold(amountE6: bigint) {
-      t.hot -= amountE6;
-      t.cold += amountE6;
-      t.sweeps.push(amountE6);
-      return `tsweep-${t.sweeps.length}`;
-    },
-  };
-  return t;
 }
 
 test('a proof-of-reserves breach auto-freezes withdrawals; unfreezing is manual', async () => {

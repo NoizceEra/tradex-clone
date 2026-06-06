@@ -42,6 +42,7 @@ export const config = {
     referralCode: num('RL_REFERRAL_CODE', 15), // the "taken?" pre-check is an enumeration oracle
     withdraw: num('RL_WITHDRAW', 10),
     withdrawNonce: num('RL_WITHDRAW_NONCE', 20),
+    admin: num('RL_ADMIN', 30), // operator endpoints (also brute-force defense on the admin key)
   },
 
   // Database. Empty => use embedded PGlite (local dev, zero deps).
@@ -118,6 +119,10 @@ export const config = {
   // they sit 'requested' (already debited) until an operator runs processWithdrawal explicitly.
   withdrawalAutoApproveMaxUsd: num('WITHDRAWAL_AUTO_APPROVE_MAX_USD', 1_000),
   treasuryPassMs: num('TREASURY_PASS_MS', 60_000), // proof-of-reserves + hot-float worker cadence
+  // Operator surface (custody): the /admin routes are only registered when this is set (and only
+  // under REAL_FUNDS). Approve/reverse withdrawals, freeze/unfreeze, treasury report — see
+  // docs/ops-runbook.md. The key authenticates the operator; signing stays server-side.
+  adminApiKey: process.env.ADMIN_API_KEY ?? '',
 };
 
 if (config.realFunds) {
@@ -141,6 +146,11 @@ if (config.realFunds) {
       'REAL_FUNDS on MAINNET is gated behind the audit + KYC/AML + geofence (custody P4). Set ALLOW_MAINNET_FUNDS=true only once those gates are met.',
     );
   }
+}
+
+// A weak operator key guards real money — require real entropy or none at all (routes unregistered).
+if (config.adminApiKey && config.adminApiKey.length < 32) {
+  throw new Error('ADMIN_API_KEY must be at least 32 characters (or unset to disable the /admin routes).');
 }
 
 // Never run in production with the committed default JWT secret (would allow token forgery).

@@ -12,13 +12,19 @@ import { socialRoutes } from './routes/social.ts';
 import { historyRoutes } from './routes/history.ts';
 import { chatRoutes } from './routes/chat.ts';
 import { walletRoutes } from './routes/wallet.ts';
+import { adminRoutes, type AdminChains } from './routes/admin.ts';
 import { registerWs } from './plugins/ws.ts';
+
+export interface BuildServerOpts {
+  /** Chain overrides for the operator routes — tests inject fakes; production lazily wires Solana. */
+  adminChains?: AdminChains;
+}
 
 /**
  * Build the Fastify instance. Routes for auth/markets/orders/account/lp and the
  * WebSocket hub are registered here in later tasks; for now it boots with health.
  */
-export async function buildServer(): Promise<FastifyInstance> {
+export async function buildServer(opts: BuildServerOpts = {}): Promise<FastifyInstance> {
   const app = Fastify({
     // behind a proxy (Vercel/Render/Fly), trust X-Forwarded-For so rate-limit keys on the real client IP
     trustProxy: config.trustProxy,
@@ -79,6 +85,17 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(historyRoutes);
   await app.register(chatRoutes);
   await app.register(walletRoutes);
+
+  // Operator surface: real funds + a configured admin key only (otherwise the routes don't exist).
+  if (config.realFunds && config.adminApiKey) {
+    let chains = opts.adminChains;
+    if (!chains) {
+      // lazy: the Solana modules only load on the configured production path, never in tests
+      const { solanaWithdrawChain, solanaTreasuryChain } = await import('./services/custody/solana.ts');
+      chains = { withdrawChain: solanaWithdrawChain(), treasuryChain: solanaTreasuryChain() };
+    }
+    await app.register(adminRoutes(chains));
+  }
 
   return app;
 }

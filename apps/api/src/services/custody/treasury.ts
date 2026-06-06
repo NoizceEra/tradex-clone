@@ -55,18 +55,27 @@ export async function unfreezeWithdrawals(db: Db): Promise<void> {
   await db.query(`DELETE FROM system_flags WHERE key = $1`, [FROZEN_KEY]);
 }
 
-export interface TreasuryReport {
+/** Read-only treasury/PoR state — safe to expose on an admin GET (no sweep, no freeze). */
+export interface TreasuryState {
   liabilityE6: bigint; // |ledger TREASURY_USDC| — what the platform owes internally
-  onchainE6: bigint; // cold + hot + unswept deposit-address balances
-  sweptE6: bigint; // hot -> cold this pass
-  shortfallE6: bigint; // pending payouts the hot wallet can't cover (operator: top up from cold)
-  breached: boolean; // proof-of-reserves failed THIS pass (the frozen flag itself outlives the breach)
+  hotE6: bigint;
+  coldE6: bigint;
+  unsweptE6: bigint; // credited deposits still sitting on their deposit addresses
+  onchainE6: bigint; // hot + cold + unswept
+  pendingE6: bigint; // accepted payouts that will leave the hot wallet
+  shortfallE6: bigint; // pending the hot wallet can't cover (operator: top up from cold)
+  breached: boolean; // proof of reserves failing RIGHT NOW (the frozen flag outlives a breach)
+  frozen: string | null; // current freeze reason, if any
 }
 
-/** One treasury pass: proof-of-reserves (auto-freeze on breach), then hot-float management. */
-export async function treasuryPass(db: Db, chain: TreasuryChain, log?: CustodyLog): Promise<TreasuryReport> {
-  // The five reads are mutually independent — gather them concurrently (the chain RPCs dominate).
-  const [ledgerBal, [hot, cold], unswept, pendingRes] = await Promise.all([
+export interface TreasuryReport extends TreasuryState {
+  sweptE6: bigint; // hot -> cold this pass
+}
+
+/** Gather the treasury/PoR numbers without acting on them. */
+export async function treasuryState(db: Db, chain: TreasuryChain): Promise<TreasuryState> {
+  // The reads are mutually independent — gather them concurrently (the chain RPCs dominate).
+  const [ledgerBal, [hot, cold], unswept, pendingRes, frozen] = await Promise.all([
     getOrCreateSystemAccount(db, 'TREASURY_USDC').then((acct) => getBalance(db, acct)),
     Promise.all([chain.hotBalance(), chain.coldBalance()]),
     // Credited-but-unswept deposits still sit on their (ours, HD-derived) deposit addresses —
@@ -80,36 +89,51 @@ export async function treasuryPass(db: Db, chain: TreasuryChain, log?: CustodyLo
       `SELECT COALESCE(SUM(amount_e6), 0)::text AS total FROM withdrawals
        WHERE status IN ('requested', 'signed', 'broadcast')`,
     ),
+    withdrawalsFrozen(db),
   ]);
 
-  // --- proof of reserves -------------------------------------------------------------------
   const liabilityE6 = ledgerBal < 0n ? -ledgerBal : 0n;
   const unsweptE6 = BigInt(unswept.rows[0].total);
   const onchainE6 = hot + cold + unsweptE6;
+  const pendingE6 = BigInt(pendingRes.rows[0].total);
+  return {
+    liabilityE6,
+    hotE6: hot,
+    coldE6: cold,
+    unsweptE6,
+    onchainE6,
+    pendingE6,
+    shortfallE6: pendingE6 > hot ? pendingE6 - hot : 0n,
+    breached: onchainE6 < liabilityE6,
+    frozen,
+  };
+}
 
-  const breached = onchainE6 < liabilityE6;
-  if (breached) {
+/** One treasury pass: proof-of-reserves (auto-freeze on breach), then hot-float management. */
+export async function treasuryPass(db: Db, chain: TreasuryChain, log?: CustodyLog): Promise<TreasuryReport> {
+  const s = await treasuryState(db, chain);
+
+  // --- proof of reserves -------------------------------------------------------------------
+  if (s.breached) {
     const reason =
-      `proof-of-reserves breach: on-chain custody ${onchainE6} uUSDC ` +
-      `(hot ${hot} + cold ${cold} + unswept ${unsweptE6}) < liabilities ${liabilityE6} uUSDC`;
+      `proof-of-reserves breach: on-chain custody ${s.onchainE6} uUSDC ` +
+      `(hot ${s.hotE6} + cold ${s.coldE6} + unswept ${s.unsweptE6}) < liabilities ${s.liabilityE6} uUSDC`;
     await freezeWithdrawals(db, reason);
-    log?.error({ onchainE6: onchainE6.toString(), liabilityE6: liabilityE6.toString() }, reason);
+    log?.error({ onchainE6: s.onchainE6.toString(), liabilityE6: s.liabilityE6.toString() }, reason);
   }
 
   // --- hot-float management ----------------------------------------------------------------
-  const pending = BigInt(pendingRes.rows[0].total);
   const hotMax = usdc(config.hotWalletMaxUsd);
-  const excess = hot - (pending > hotMax ? pending : hotMax);
+  const excess = s.hotE6 - (s.pendingE6 > hotMax ? s.pendingE6 : hotMax);
   const sweptE6 = excess >= usdc(config.minSweepUsd) ? excess : 0n;
   if (sweptE6 > 0n) await chain.sweepToCold(sweptE6);
 
-  const shortfallE6 = pending > hot ? pending - hot : 0n;
-  if (shortfallE6 > 0n) {
+  if (s.shortfallE6 > 0n) {
     log?.error(
-      { shortfallE6: shortfallE6.toString(), hotE6: hot.toString(), pendingE6: pending.toString() },
+      { shortfallE6: s.shortfallE6.toString(), hotE6: s.hotE6.toString(), pendingE6: s.pendingE6.toString() },
       'hot wallet cannot cover pending withdrawals — top up from the cold treasury',
     );
   }
 
-  return { liabilityE6, onchainE6, sweptE6, shortfallE6, breached };
+  return { ...s, sweptE6 };
 }

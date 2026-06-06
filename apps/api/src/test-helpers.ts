@@ -48,6 +48,28 @@ export async function fund(db: Db, userId: string, amount: bigint): Promise<void
   });
 }
 
+/** In-memory TreasuryChain with mutable balances (shared by treasury + admin tests). */
+export function fakeTreasury(init: { hot?: bigint; cold?: bigint } = {}) {
+  const t = {
+    hot: init.hot ?? 0n,
+    cold: init.cold ?? 0n,
+    sweeps: [] as bigint[],
+    async hotBalance() {
+      return t.hot;
+    },
+    async coldBalance() {
+      return t.cold;
+    },
+    async sweepToCold(amountE6: bigint) {
+      t.hot -= amountE6;
+      t.cold += amountE6;
+      t.sweeps.push(amountE6);
+      return `tsweep-${t.sweeps.length}`;
+    },
+  };
+  return t;
+}
+
 /** In-memory WithdrawChain: deterministic sigs, togglable broadcast failure, markable dead sigs.
  *  The sig counter is global — chain signatures are globally unique (withdrawals.onchain_sig is
  *  UNIQUE), so fakes across tests must not collide. */

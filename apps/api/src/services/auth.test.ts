@@ -94,6 +94,11 @@ test('real-funds wallet endpoints are 403 in play-money mode', async () => {
   }
 });
 
+test('the /admin routes do not exist without an operator key', async () => {
+  const res = await app.inject({ method: 'GET', url: '/admin/withdrawals' });
+  assert.equal(res.statusCode, 404); // unregistered, not just unauthorized
+});
+
 test('ledger still reconciles after auth + faucet activity', async () => {
   const report = await reconcile(await getDb());
   assert.equal(report.ok, true, JSON.stringify(report, null, 2));

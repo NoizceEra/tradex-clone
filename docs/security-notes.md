@@ -66,6 +66,12 @@ Deferred (tracked, deliberately not in scope yet):
 - **F6 (LOW, mainnet/P4):** SOL→USDC swaps sandwichable at 1% via public RPC. Fix at mainnet dark-launch: tighten slippage + private/Jito route.
 - **F7 (LOW):** HD index allocation can throw a transient 500 under a burst of >3 simultaneous first-time registrations (no collision/fund risk). Fix opportunistically: DB sequence or single-statement allocation.
 
+### Operator surface (`/admin` routes)
+Registered only when `REAL_FUNDS` AND `ADMIN_API_KEY` (≥ 32 chars, enforced at boot) are set —
+otherwise the routes don't exist (404). Timing-safe key compare, `RL_ADMIN` rate cap as
+brute-force defense. Approve/reverse/freeze/unfreeze/treasury-report; payout signing stays
+server-side (the operator key never exposes the hot-wallet secret). See `docs/ops-runbook.md`.
+
 ### Treasury / proof-of-reserves (P3)
 - **Proof of reserves** runs every `TREASURY_PASS_MS`: on-chain custody (cold treasury + hot wallet + credited-but-unswept deposit balances) must cover the ledger's `TREASURY_USDC` liabilities. A breach **auto-freezes withdrawals** (the `system_flags.withdrawals_frozen` row): new requests and new payout signings are rejected with 503; deposits continue; recovery of already-signed payouts proceeds (those debits are final, re-broadcast is idempotent). **Unfreezing is manual** (`unfreezeWithdrawals`) — a PoR breach is an incident, not a self-healing condition.
 - **Velocity guard on automation:** the `WITHDRAWAL_AUTO_PROCESS` loop only pays out rows ≤ `WITHDRAWAL_AUTO_APPROVE_MAX_USD` (default $1k); larger withdrawals sit debited until an operator runs `processWithdrawal` explicitly.
