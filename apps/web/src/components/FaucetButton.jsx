@@ -1,11 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import * as api from '../lib/api.js';
 
 export function FaucetButton({ onFunded, className = 'btn-ghost' }) {
   const { user } = useAuth();
   const [busy, setBusy] = useState(false);
-  if (!user) return null;
+  const [realFunds, setRealFunds] = useState(false);
+
+  // Play money only: under REAL_FUNDS the faucet is disabled server-side and the
+  // wallet panel (deposit/withdraw) takes its place.
+  useEffect(() => {
+    api.getHealth().then((h) => setRealFunds(Boolean(h.realFunds))).catch(() => {});
+  }, []);
+
+  if (!user || realFunds) return null;
   return (
     <button
       className={className}

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { formatUsd } from '@pokex/pricing';
 import { useAuth } from '../auth/AuthContext';
 import { FaucetButton } from './FaucetButton';
+import { WalletPanel } from './WalletPanel';
 import { OpenPositions } from './OpenPositions';
 import { ReferralPanel } from './ReferralPanel';
 import * as api from '../lib/api.js';
@@ -10,6 +11,11 @@ export function Portfolio({ markets, onSelect }) {
   const { user } = useAuth();
   const [balance, setBalance] = useState(null);
   const [positions, setPositions] = useState([]);
+  const [realFunds, setRealFunds] = useState(false);
+
+  useEffect(() => {
+    api.getHealth().then((h) => setRealFunds(Boolean(h.realFunds))).catch(() => {});
+  }, []);
 
   const refresh = useCallback(() => {
     if (!user) return;
@@ -48,6 +54,7 @@ export function Portfolio({ markets, onSelect }) {
       <div style={{ margin: '1rem 0' }}>
         <FaucetButton onFunded={refresh} className="btn-primary" />
       </div>
+      {realFunds && <WalletPanel onChanged={refresh} />}
       <h3>Open Positions</h3>
       <OpenPositions
         positions={positions}

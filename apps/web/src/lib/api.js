@@ -96,6 +96,17 @@ export const getBalance = () => req('/account/balance', { auth: true });
 export const faucet = (amountUsd) => req('/faucet', { method: 'POST', auth: true, body: { amountUsd } });
 export const getPositions = () => req('/positions', { auth: true });
 
+// --- real-funds wallet (custody) ---
+// /health carries the REAL_FUNDS flag — fetched once and cached (it can't change without a
+// server restart). Decides faucet (play money) vs deposit/withdraw (real funds) UI.
+let healthPromise = null;
+export const getHealth = () => (healthPromise ??= req('/health'));
+export const getDepositAddress = () => req('/wallet/deposit-address', { auth: true });
+export const withdrawNonce = (amountE6, dest) =>
+  req('/wallet/withdraw/nonce', { method: 'POST', auth: true, body: { amountE6, dest } });
+export const withdraw = (body) => req('/wallet/withdraw', { method: 'POST', auth: true, body });
+export const getWalletTransactions = () => req('/wallet/transactions', { auth: true });
+
 // --- account history (trade-panel tabs) ---
 export const getOrderHistory = () => req('/history/orders', { auth: true });
 export const getTradeHistory = () => req('/history/trades', { auth: true });

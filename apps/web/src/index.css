@@ -1148,3 +1148,19 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
 .ref-redeemed { color: var(--text-muted); font-size: 0.55rem; }
 .ref-redeemed strong { color: var(--gold); }
 .ref-msg { font-size: 0.5rem; line-height: 1.5; }
+
+/* real-funds wallet panel (shares the referral panel chrome; tokens only so every skin applies) */
+.wallet-panel .ref-msg { margin-top: 0.6rem; }
+/* base font, NOT --font-num: some skins point --font-num at caps-only display faces (Bebas,
+   Cinzel) and base58 addresses are case-sensitive — the copyable string must render true-case */
+.wallet-addr { font-family: var(--font-base); font-size: 0.5rem; color: var(--gold); word-break: break-all; line-height: 1.5; }
+.wallet-addr-actions { display: flex; align-items: center; gap: 0.6rem; }
+.wallet-qr { background: #fff; padding: 3px; border-radius: var(--radius, 4px); image-rendering: pixelated; }
+.wallet-hint { font-size: 0.45rem; color: var(--text-muted); line-height: 1.5; }
+.wallet-input {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text);
+  font-family: var(--font-base); font-size: 0.55rem; padding: 0.55rem; /* base font: typed addresses must render true-case */
+}
+.wallet-input:focus { border-color: var(--gold); outline: none; }
+.wallet-txs-label { display: block; margin: 1rem 0 0.4rem; }
+.wallet-kind { text-transform: capitalize; }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useCopy } from '../lib/useCopy.js';
 import * as api from '../lib/api.js';
 
 export function ReferralPanel({ onRedeemed }) {
@@ -7,7 +8,7 @@ export function ReferralPanel({ onRedeemed }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopy();
   const [editing, setEditing] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [codeBusy, setCodeBusy] = useState(false);
@@ -19,16 +20,6 @@ export function ReferralPanel({ onRedeemed }) {
   useEffect(() => load(), [load]);
 
   const link = info ? `${window.location.origin}/?ref=${info.code}` : '';
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard blocked */
-    }
-  };
 
   const startEdit = () => {
     setNewCode(info.code);
@@ -102,7 +93,7 @@ export function ReferralPanel({ onRedeemed }) {
             <span className="ref-label">YOUR CODE</span>
             <span className="ref-code">{info.code}</span>
           </div>
-          <button className="btn-secondary ref-copy" onClick={copy}>{copied ? 'Copied ✓' : 'Copy link'}</button>
+          <button className="btn-secondary ref-copy" onClick={() => copy(link)}>{copied ? 'Copied ✓' : 'Copy link'}</button>
           <button className="btn-secondary ref-copy" onClick={startEdit}>Edit</button>
         </div>
       )}
