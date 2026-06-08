@@ -8,6 +8,7 @@ import {
 } from '@solana/web3.js';
 import bs58 from 'bs58';
 import {
+  AccountLayout,
   createAssociatedTokenAccountIdempotentInstruction,
   createTransferInstruction,
   getAssociatedTokenAddressSync,
@@ -40,14 +41,18 @@ function hotWallet(): Keypair {
   }
 }
 
-/** Finalized USDC balance of `owner`'s ATA; 0 when the ATA doesn't exist yet. */
+/**
+ * Finalized USDC balance of `owner`'s ATA; 0 only when the ATA genuinely doesn't exist.
+ *
+ * A transient RPC failure must NOT read as zero: this feeds the treasury proof-of-reserves check,
+ * where a false zero would understate on-chain custody and trip a spurious breach -> withdrawal
+ * auto-freeze. getAccountInfo returns null for a missing account (a real zero) but THROWS on an RPC
+ * error, so a blip propagates to the caller (the worker logs + retries the pass) instead of freezing.
+ */
 async function usdcBalance(conn: Connection, mint: PublicKey, owner: PublicKey, offCurve = false): Promise<bigint> {
   const ata = getAssociatedTokenAddressSync(mint, owner, offCurve);
-  try {
-    return BigInt((await conn.getTokenAccountBalance(ata, 'finalized')).value.amount);
-  } catch {
-    return 0n;
-  }
+  const info = await conn.getAccountInfo(ata, 'finalized');
+  return info ? AccountLayout.decode(info.data).amount : 0n;
 }
 
 /**

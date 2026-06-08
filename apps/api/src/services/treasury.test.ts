@@ -87,6 +87,19 @@ test('a proof-of-reserves breach auto-freezes withdrawals; unfreezing is manual'
   assert.equal((await reconcile(db)).ok, true);
 });
 
+test('a transient chain read failure does NOT trigger a false freeze (RPC blip != zero custody)', async () => {
+  const u = await newUser();
+  await fund(u, usdc(100)); // real liabilities exist, so a false-zero custody read would "breach"
+  await unfreezeWithdrawals(db); // clean slate regardless of prior tests
+  assert.equal(await withdrawalsFrozen(db), null);
+
+  // a balance read errors out (simulated RPC outage) — custody is UNKNOWN this pass, not zero
+  const flaky = fakeTreasury({ failBalance: true });
+  await assert.rejects(() => treasuryPass(db, flaky), /RPC outage/);
+  // the pass aborted before any freeze decision — no spurious freeze from an unreadable balance
+  assert.equal(await withdrawalsFrozen(db), null);
+});
+
 test('credited-but-unswept deposit balances count toward proof of reserves', async () => {
   const u = await newUser();
   const unswept = usdc(50);

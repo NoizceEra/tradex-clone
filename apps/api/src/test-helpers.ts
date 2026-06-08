@@ -48,16 +48,20 @@ export async function fund(db: Db, userId: string, amount: bigint): Promise<void
   });
 }
 
-/** In-memory TreasuryChain with mutable balances (shared by treasury + admin tests). */
-export function fakeTreasury(init: { hot?: bigint; cold?: bigint } = {}) {
+/** In-memory TreasuryChain with mutable balances (shared by treasury + admin tests).
+ *  failBalance simulates a transient RPC outage on the balance reads (mirrors
+ *  fakeWithdrawChain.failBroadcast) — used to prove an unreadable balance never reads as zero. */
+export function fakeTreasury(init: { hot?: bigint; cold?: bigint; failBalance?: boolean } = {}) {
   const t = {
     hot: init.hot ?? 0n,
     cold: init.cold ?? 0n,
     sweeps: [] as bigint[],
     async hotBalance() {
+      if (init.failBalance) throw new Error('simulated RPC outage'); // transient blip, not a real zero
       return t.hot;
     },
     async coldBalance() {
+      if (init.failBalance) throw new Error('simulated RPC outage');
       return t.cold;
     },
     async sweepToCold(amountE6: bigint) {
