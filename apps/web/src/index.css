@@ -71,7 +71,11 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
   letter-spacing: 2px;
 }
 
-.nav-brand img { width: 32px; height: 32px; image-rendering: pixelated; }
+/* Icon logo fills the fixed 64px navbar height (no vertical padding to reduce); kept under 64 so it
+   clears the 3px accent border. The bar height itself is unchanged. */
+.nav-brand img { width: 52px; height: 52px; image-rendering: pixelated; }
+/* Wordmark (pre-trimmed to its content box) sized by height; width follows its aspect ratio. */
+.nav-brand img.nav-wordmark { width: auto; height: 33px; }
 
 .nav-links { display: flex; gap: 1.5rem; }
 .nav-actions { display: flex; align-items: center; gap: 0.6rem; }

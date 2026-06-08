@@ -16,8 +16,8 @@ export function Navbar({ activeView, setActiveView, chatOpen, onToggleChat }) {
     <nav className="navbar">
       <div className="nav-left">
         <div className="nav-brand">
-          <img src="/pokeball.png" alt="" style={{ width: 22, height: 22 }} />
-          <span style={{ fontWeight: 'bold', fontSize: '1rem' }}>PokeX</span>
+          <img src="/GachaDexPFP2.png" alt="" />
+          <img className="nav-wordmark" src="/GachaDexWords.png" alt="Gachadex" />
         </div>
         <button
           className={`chat-toggle ${chatOpen ? 'active' : ''}`}
