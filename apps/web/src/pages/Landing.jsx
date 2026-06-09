@@ -117,6 +117,23 @@ export function Landing() {
           </button>
         </section>
 
+        <section className="contract-section">
+          <h3>Contract Address</h3>
+          <div className="contract-address">
+            <code>3FdoksSvontxzSg42mfBccFp8zmH4KdgbS8bsoMgpump</code>
+            <button
+              className="copy-button"
+              onClick={() => {
+                navigator.clipboard.writeText('3FdoksSvontxzSg42mfBccFp8zmH4KdgbS8bsoMgpump')
+                alert('Contract address copied to clipboard!')
+              }}
+              title="Copy to clipboard"
+            >
+              📋 Copy
+            </button>
+          </div>
+        </section>
+
         <footer className="landing-footer">
           <p>GachaDex • Collectible Card Perpetual Futures on Solana</p>
           <p className="footer-links">
@@ -124,7 +141,7 @@ export function Landing() {
               Twitter
             </a>
             {' • '}
-            <a href="https://github.com" target="_blank" rel="noopener noreferrer">
+            <a href="https://github.com/NoizceEra/gachadex-landing" target="_blank" rel="noopener noreferrer">
               GitHub
             </a>
           </p>

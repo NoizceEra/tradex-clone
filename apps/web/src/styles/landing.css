@@ -668,3 +668,133 @@
     font-size: 0.6rem;
   }
 }
+
+/* Contract Section */
+.contract-section {
+  padding: 2rem;
+  background: var(--bg);
+  border-top: 3px solid var(--accent);
+  border-bottom: 3px solid var(--accent);
+  text-align: center;
+}
+
+.contract-section h3 {
+  font-size: 1rem;
+  color: var(--gold);
+  text-shadow: 2px 2px 0 var(--accent);
+  margin-bottom: 1rem;
+  letter-spacing: 1px;
+}
+
+.contract-address {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.contract-address code {
+  background: var(--bg-2);
+  color: var(--gold);
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--border);
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  word-break: break-all;
+  flex: 1;
+  min-width: 250px;
+  text-shadow: 0 0 4px rgba(240, 192, 64, 0.3);
+}
+
+.copy-button {
+  background: var(--accent);
+  color: var(--text);
+  border: 2px solid var(--accent);
+  padding: 0.75rem 1rem;
+  font-family: var(--font-base);
+  font-size: 0.65rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 1px;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.copy-button:hover {
+  background: var(--accent-lit);
+  border-color: var(--accent-lit);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.4), 0 0 8px rgba(255, 100, 100, 0.4);
+  transform: translate(-2px, -2px);
+}
+
+.copy-button:active {
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.3);
+  transform: translate(0, 0);
+}
+
+/* Mobile: Contract Section */
+@media (max-width: 768px) {
+  .contract-section {
+    padding: 1.5rem;
+  }
+
+  .contract-section h3 {
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .contract-address {
+    gap: 0.75rem;
+  }
+
+  .contract-address code {
+    padding: 0.6rem 0.8rem;
+    font-size: 0.65rem;
+    min-width: 200px;
+  }
+
+  .copy-button {
+    padding: 0.6rem 0.8rem;
+    font-size: 0.6rem;
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 480px) {
+  .contract-section {
+    padding: 1.25rem 1rem;
+    border-top: 2px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+  }
+
+  .contract-section h3 {
+    font-size: 0.8rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .contract-address {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .contract-address code {
+    width: 100%;
+    padding: 0.6rem;
+    font-size: 0.6rem;
+    min-width: unset;
+  }
+
+  .copy-button {
+    width: 100%;
+    padding: 0.6rem;
+    font-size: 0.6rem;
+    min-height: 40px;
+  }
+}
