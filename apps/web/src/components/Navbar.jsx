@@ -8,7 +8,6 @@ const NAV = [
   ['pool', 'Pool'],
   ['leaderboard', 'Leaderboard'],
   ['portfolio', 'Portfolio'],
-  ['debug', '🔧 Debug'],
 ];
 
 export function Navbar({ activeView, setActiveView, chatOpen, onToggleChat }) {

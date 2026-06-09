@@ -9,7 +9,6 @@ import { PoolView } from '../components/PoolView';
 import { Leaderboard } from '../components/Leaderboard';
 import { ChatSidebar } from '../components/ChatSidebar';
 import { Toasts } from '../components/Toasts';
-import { WalletDebug } from '../components/WalletDebug';
 import { useRealtime } from '../store/realtime';
 import { useChat } from '../store/chat';
 import * as api from '../lib/api.js';
@@ -89,7 +88,6 @@ export function Exchange() {
       {activeView === 'portfolio' && <Portfolio markets={markets} onSelect={handleTradeMarket} />}
       {activeView === 'pool' && <PoolView />}
       {activeView === 'leaderboard' && <Leaderboard />}
-      {activeView === 'debug' && <WalletDebug />}
 
       <Toasts />
       </div>
