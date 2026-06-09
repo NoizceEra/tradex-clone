@@ -72,3 +72,34 @@ Per-market (card or index).
   promptly after each ingest. **5s stays.**
 - The **daily feed is the real constraint.** Manual override (§2) is the near-term mitigation; a
   higher-frequency price source is a longer-term option.
+
+---
+
+## 4. Liquidity bootstrapping (researched, decision pending)
+
+**Problem:** today a market needs LP seeded (by us or players) or trading doesn't work — but we want
+**every market tradeable from day one** with little capital and **bounded real-USDC risk**.
+
+**Researched 2026-06-09** — full write-up in [`docs/liquidity-research.md`](docs/liquidity-research.md).
+Short version of the options (they stack; A/B is the near-term fork):
+
+1. **A — Capped global vault** *(recommended primary)*: keep our single global LP vault, add GMX-style
+   hard caps + auto-deleverage + Drift-style widening spread. Live everywhere now, risk bounded by caps.
+2. **B — LS-LMSR formula quoter**: a formula is the counterparty for thin/long-tail markets; near-zero
+   capital, pre-known worst-case loss per market. (Adapting prediction-market math to a leveraged perp
+   is non-trivial — see doc.)
+3. **C — Rent outside MMs** (Kalshi designated-MM + Polymarket per-market rewards): house-neutral, layer
+   on as volume grows.
+4. **D — JIT auction** (Drift-style): outside MMs take over from the backstop; long-term target.
+
+**Cautionary tale:** a naive fixed virtual pool (Perp v1 vAMM) structurally drains under trending,
+one-sided, thin markets — exactly our profile (daily price + long-tail cards). Caps are mandatory.
+
+**Decision (2026-06-09): A + B hybrid.** Capped global vault (A) backs liquid markets; an LS-LMSR
+formula quoter (B) is the counterparty for thin/long-tail cards (the common case — most cards are
+thin + daily-priced). C and D layer on as volume grows.
+
+**Before building, resolve (see doc Open questions):** (1) how LS-LMSR's bounded-loss proof adapts to
+a continuous-price leveraged perp with funding + liquidations, and the per-market worst-case USDC
+formula; (2) the routing rule for which markets use the vault vs the formula; (3) the actual numeric
+risk dials (caps, reserve %, `b`/`α`) from our own modelling. **No build work has started.**
