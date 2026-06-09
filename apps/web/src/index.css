@@ -69,6 +69,10 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
   color: var(--gold);
   text-shadow: 2px 2px 0 var(--accent);
   letter-spacing: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer; /* clickable: returns to the landing */
 }
 
 /* Icon logo fills the fixed 64px navbar height (no vertical padding to reduce); kept under 64 so it

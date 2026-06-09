@@ -4,6 +4,7 @@ import { NetworkIndicator } from './NetworkIndicator';
 import { useChat } from '../store/chat';
 
 const NAV = [
+  ['home', 'Home'],
   ['trade', 'Exchange'],
   ['markets', 'Markets'],
   ['pool', 'Pool'],
@@ -16,10 +17,10 @@ export function Navbar({ activeView, setActiveView, chatOpen, onToggleChat }) {
   return (
     <nav className="navbar">
       <div className="nav-left">
-        <div className="nav-brand">
+        <button type="button" className="nav-brand" onClick={() => setActiveView('home')} title="Back to home">
           <img src="/GachaDexPFP2.png" alt="" />
           <img className="nav-wordmark" src="/GachaDexWords.png" alt="Gachadex" />
-        </div>
+        </button>
         <button
           className={`chat-toggle ${chatOpen ? 'active' : ''}`}
           onClick={onToggleChat}
