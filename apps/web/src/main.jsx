@@ -11,7 +11,6 @@ document.documentElement.setAttribute('data-theme', initialSkin());
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
-import { clusterApiUrl } from '@solana/web3.js';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 import { Buffer } from 'buffer';
@@ -21,11 +20,11 @@ window.Buffer = window.Buffer || Buffer;
 
 // eslint-disable-next-line react-refresh/only-export-components
 const RootApp = () => {
-  // Play-money MVP runs on devnet. Override with VITE_SOLANA_RPC in prod.
-  // Default to a reliable public devnet RPC instead of the rate-limited clusterApiUrl
+  // Mainnet. Override with VITE_SOLANA_RPC (apps/web/.env) — the public endpoint is heavily
+  // rate-limited, so use a dedicated provider (Helius / QuickNode / Triton) in prod.
   const endpoint =
     import.meta.env.VITE_SOLANA_RPC ||
-    'https://devnet.rpc.ironforge.network/rpc';
+    'https://api.mainnet-beta.solana.com';
 
   const wallets = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter()], []);
 
