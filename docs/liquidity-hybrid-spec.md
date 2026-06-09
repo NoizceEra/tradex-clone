@@ -66,23 +66,19 @@ Everything settles against the global pool already. A is about bounding how much
 - Insurance fund → socialization on bad debt — `engine.ts:502-512`
 - Isolated-margin liquidation, 5s sweep — `engine.ts:458`, `index.ts:106`
 
-**Missing (build):**
+**Built (Phases 1 + 3):**
 
-1. **Pool-health gate on opens.** Today nothing blocks new positions when the pool is thin relative to
-   exposure — opens are only capped per-market-side, and withdrawals are the only NAV check. Add a gate
-   in `openPosition` (before the OI check at `engine.ts:229`): reject/▾reduce-only when
-   `reserved / NAV` or `pendingTraderProfit / NAV` exceeds a configured ceiling. This is the single
-   highest-value cap — it's what stops a thin pool being drained by net winners.
-2. **PnL-factor cap (MAX_PNL_FACTOR).** Cap how much *pending* trader profit is allowed against pool
-   value before new same-direction risk is refused. New config + check alongside (1).
-3. **Auto-deleverage (ADL).** None exists (confirmed: no `deleverage`/`ADL`/`pnlFactor` in `apps/api`).
-   When pending-profit-to-NAV breaches a higher threshold, force-reduce the most-profitable positions
-   (rank by profit, close at mark) until the ratio is safe. Hooks into the existing liquidation sweep
-   (`liquidateEligible`, `engine.ts:555`) — same machinery, different trigger.
+1. **Pool-health gate on opens (MAX_PNL_FACTOR). ✅ Phase 1.** `openPosition` pauses new opens once
+   `poolPnlLiability > maxPnlFactorBps × NAV` (winners owed in full, losers floored at margin). The
+   single highest-value cap — what stops a thin pool being drained by net winners. Off by default.
+2. **PnL-factor cap. ✅ Phase 1.** Same gate/threshold (`maxPnlFactorBps`) — the liability measured is
+   the pool's net pending obligation.
+3. **Auto-deleverage (ADL). ✅ Phase 3.** `autoDeleverage()` force-closes the most-profitable positions
+   at the mark (pool-wide) once liability breaches the higher `adlPnlFactorBps × NAV`, run each
+   liquidation sweep — same machinery as `liquidateEligible`, winner-side trigger. Off by default.
 
-**Effort:** moderate. (1)+(2) are a config + one guard in the open path + tests. (3) is a new sweep
-branch reusing the liquidation/close plumbing. No schema rewrite; `lp_pool` already tracks
-`reserved_for_oi_uusdc`.
+**Done with the full QA + `/simplify` cycle.** No schema rewrite beyond the `'deleveraged'` status value
+and the Phase-2 volume column; `lp_pool` already tracks `reserved_for_oi_uusdc`.
 
 ---
 
@@ -187,8 +183,10 @@ all of which lean on A, not B:
 2. **Phase 2 — B′ adaptive per-market depth. ✅ DONE.** `depth = max(NAV, floor, α·cumulativeVolume)`,
    per-market volume counter via `insertFill`, no `exp()`. `adaptive-depth.test.ts`. *(Still open:
    per-market OI caps + thin-market margin/leverage tuning — fold into calibration, see §7.)*
-3. **Phase 3 — ADL.** Add the auto-deleverage sweep branch as the backstop for Phase 1's caps. Route
-   its fills through `insertFill` (so volume is recorded automatically).
+3. **Phase 3 — ADL. ✅ DONE.** `autoDeleverage()` in `engine.ts` force-closes the most profitable
+   positions at the mark (pool-wide) once liability tops `adlPnlFactorBps` of NAV, run each liquidation
+   sweep. Off by default; set `ADL_PNL_FACTOR_BPS ≥ MAX_PNL_FACTOR_BPS`. `adl.test.ts`. New
+   `'deleveraged'` position status (propagated to trade history).
 4. **Phase 4 (optional, later) — C/D.** Designated-MM rewards / JIT auction to rent house-neutral
    liquidity once volume justifies paying makers.
 

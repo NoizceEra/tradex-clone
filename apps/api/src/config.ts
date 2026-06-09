@@ -107,6 +107,13 @@ export const config = {
   depthFloorUusdc: BigInt(num('DEPTH_FLOOR_UUSDC', 1_000_000_000_000)), // $1M zero-volume depth
   depthAlphaE6: BigInt(num('DEPTH_ALPHA_E6', 1_000_000)), // α = 1.0 → depth gains 1 uusdc per uusdc of cumulative volume
 
+  // Auto-deleverage (ADL) — the active backstop to the MAX_PNL_FACTOR gate (Phase 3). When the pool's
+  // net liability to traders exceeds this fraction of NAV, the liquidation sweep force-closes the most
+  // profitable positions at the mark (realizing their gains, removing their forward upside) until
+  // liability is back under the threshold. Set this >= maxPnlFactorBps so opens pause (the gate) BEFORE
+  // ADL fires. 0 = DISABLED (play-money default). See docs/liquidity-hybrid-spec.md §6.
+  adlPnlFactorBps: num('ADL_PNL_FACTOR_BPS', 0),
+
   // --- Real-funds custody (P0 scaffolding; unused until the REAL_FUNDS paths land) ---
   // See docs/real-funds-custody-plan.md. Env-only; keys/seeds are never hardcoded — the HD master
   // seed lives in KMS and only its reference is configured here.

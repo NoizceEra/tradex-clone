@@ -233,7 +233,7 @@ CREATE TABLE IF NOT EXISTS positions (
   realized_pnl_uusdc        BIGINT NOT NULL DEFAULT 0,
   funding_index_snapshot_e6 BIGINT NOT NULL DEFAULT 0,
   liq_price_e6              BIGINT NOT NULL DEFAULT 0,
-  status                    TEXT NOT NULL DEFAULT 'open',  -- open|closed|liquidated
+  status                    TEXT NOT NULL DEFAULT 'open',  -- open|closed|liquidated|deleveraged
   opened_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
   closed_at                 TIMESTAMPTZ,
   version                   BIGINT NOT NULL DEFAULT 0

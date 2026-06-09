@@ -188,7 +188,7 @@ export interface PositionHistoryRow {
   symbol: string;
   side: 'Long' | 'Short';
   leverage: number;
-  status: string; // closed | liquidated
+  status: string; // closed | liquidated | deleveraged
   entryE6: string;
   avgCloseE6: string | null;
   realizedPnlUusdc: string;
@@ -205,7 +205,7 @@ export async function getPositionHistory(db: Db, userId: string, limit?: number)
     `SELECT p.id, p.side, p.leverage_e2, p.status, p.realized_pnl_uusdc::text AS pnl,
             p.avg_entry_e6::text AS entry_e6, p.opened_at, p.closed_at, m.symbol
      FROM positions p JOIN markets m ON m.id = p.market_id
-     WHERE p.user_id = $1 AND p.status IN ('closed', 'liquidated')
+     WHERE p.user_id = $1 AND p.status IN ('closed', 'liquidated', 'deleveraged')
      ORDER BY p.closed_at DESC NULLS LAST
      LIMIT $2`,
     [userId, clampLimit(limit)],

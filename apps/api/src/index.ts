@@ -2,7 +2,7 @@ import { buildServer } from './server.ts';
 import { initDb } from './db/init.ts';
 import { ingest } from './services/oracle.ts';
 import { accrueFunding } from './services/funding.ts';
-import { liquidateEligible, haltStaleMarkets } from './services/engine.ts';
+import { liquidateEligible, haltStaleMarkets, autoDeleverage } from './services/engine.ts';
 import { scanDeposits } from './services/custody/deposits.ts';
 import { recoverInFlight, processAllRequested } from './services/custody/withdrawals.ts';
 import { treasuryPass } from './services/custody/treasury.ts';
@@ -108,6 +108,7 @@ function startLiquidationLoop(db: Db, log: FastifyBaseLogger) {
     try {
       const r = await db.query<{ id: string }>(`SELECT id FROM markets WHERE tradeable AND status IN ('active','reduce_only')`);
       for (const m of r.rows) await liquidateEligible(db, m.id);
+      await autoDeleverage(db); // pool-wide: shed winner over-exposure once liability tops the ADL threshold
       await haltStaleMarkets(db, config.oracleStaleMs);
     } catch (e) {
       log.error(e, 'liquidation sweep failed');

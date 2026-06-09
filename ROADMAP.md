@@ -108,6 +108,8 @@ funding`. Full reports: [`docs/liquidity-hybrid-spec.md`](docs/liquidity-hybrid-
 
 **Build sequence:** Phase 1 — pool-health gate (MAX_PNL_FACTOR), **✅ done** (off by default); Phase 2 —
 per-market adaptive depth `max(NAV, floor, α·cumVolume)`, **✅ done** (linear curve, no `exp()`, so the
-Augur fixed-point issue doesn't apply); Phase 3 — auto-deleverage (next); Phase 4 (later) — rent
-house-neutral MMs (C/D). Still to calibrate before real-funds launch: the daily-feed gap term, α, and
-per-market OI/leverage caps (all flagged in the spike's open questions).
+Augur fixed-point issue doesn't apply); Phase 3 — auto-deleverage (ADL), **✅ done** (`adlPnlFactorBps`,
+force-closes top winners pool-wide each sweep, off by default); Phase 4 (later) — rent house-neutral MMs
+(C/D). **Still to do before real-funds launch:** calibrate the daily-feed gap term, α, `maxPnlFactorBps`,
+`adlPnlFactorBps`, and per-market OI/leverage caps (the spike's open questions); and wire an ADL
+notification on the web (force-closed winners currently get no toast).
