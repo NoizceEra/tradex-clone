@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd .gemini/antigravity/scratch/tradex-clone && ls -la apps/web/src/components/ | head -20\",\"description\":\"List components in the web app\"}",
-  "error": "Exit code 1\n/usr/bin/bash: line 1: cd: .gemini/antigravity/scratch/tradex-clone: No such file or directory",
-  "timestamp": "2026-06-09T15:43:18.365Z",
-  "retry_count": 3
-}
