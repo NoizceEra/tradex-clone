@@ -5,7 +5,6 @@ import './index.css';
 import './themes.css';
 import { initialSkin } from './store/theme';
 
-// Apply the saved skin before first paint so there's no retro→skin flash.
 document.documentElement.setAttribute('data-theme', initialSkin());
 
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
@@ -21,11 +20,8 @@ window.Buffer = window.Buffer || Buffer;
 
 // eslint-disable-next-line react-refresh/only-export-components
 const RootApp = () => {
-  // Play-money MVP runs on devnet. Override with VITE_SOLANA_RPC in prod.
-  // Default to a reliable public devnet RPC instead of the rate-limited clusterApiUrl
-  const endpoint =
-    import.meta.env.VITE_SOLANA_RPC ||
-    'https://devnet.rpc.ironforge.network/rpc';
+  // Play-money MVP runs on mainnet RPC by default so users don't need Devnet enabled in Phantom to sign in.
+  const endpoint = import.meta.env.VITE_SOLANA_RPC || clusterApiUrl('mainnet-beta');
 
   const wallets = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter()], []);
 
