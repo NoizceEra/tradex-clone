@@ -110,6 +110,11 @@ funding`. Full reports: [`docs/liquidity-hybrid-spec.md`](docs/liquidity-hybrid-
 per-market adaptive depth `max(NAV, floor, α·cumVolume)`, **✅ done** (linear curve, no `exp()`, so the
 Augur fixed-point issue doesn't apply); Phase 3 — auto-deleverage (ADL), **✅ done** (`adlPnlFactorBps`,
 force-closes top winners pool-wide each sweep, off by default); Phase 4 (later) — rent house-neutral MMs
-(C/D). **Still to do before real-funds launch:** calibrate the daily-feed gap term, α, `maxPnlFactorBps`,
-`adlPnlFactorBps`, and per-market OI/leverage caps (the spike's open questions); and wire an ADL
-notification on the web (force-closed winners currently get no toast).
+(C/D). **Calibration (2026-06-09):** proposed STARTING values in [`docs/liquidity-calibration.md`](docs/liquidity-calibration.md)
+— cards 2–3x / index 5–8x leverage, ~15% / ~7% maint margin, per-market OI cap ≈ 0.3–0.5×NAV, open-gate
+50–60% / ADL 70–80% of NAV (ADL stays **above** the gate — our open-gate isn't GMX's profit hard-cap, see
+doc §4), α calibrated to volume. ADL web toast: **✅ done**.
+
+**Still to validate before real-funds launch (doc §7):** measure the actual DAILY single-card price gap
+`g` (the governing input — verified data is only monthly); size the insurance fund for the liquidation→
+next-print slippage (no daily-oracle precedent); backtest the caps; re-pull venue params at build time.
