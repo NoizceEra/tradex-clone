@@ -185,3 +185,9 @@ if (
 ) {
   throw new Error('JWT_SECRET must be set to a strong (>= 32 char) value in production.');
 }
+
+// Pool-risk knobs must order correctly: ADL force-closes winners, so it must trigger ABOVE the gate
+// that pauses new opens — otherwise ADL fires while the pool is still admitting risk. (Both 0 = off.)
+if (config.adlPnlFactorBps > 0 && config.maxPnlFactorBps > 0 && config.adlPnlFactorBps < config.maxPnlFactorBps) {
+  throw new Error('ADL_PNL_FACTOR_BPS must be >= MAX_PNL_FACTOR_BPS so opens pause (the gate) before ADL force-closes winners.');
+}

@@ -228,13 +228,19 @@ function poolLiabilityOf(p: OpenPositionPnl): bigint {
   return p.pnlUusdc < -p.marginUusdc ? -p.marginUusdc : p.pnlUusdc;
 }
 
+/** Net pool liability for an already-fetched position set. The single definition both the gate and
+ *  ADL sum against NAV — ADL reuses this on the same `pnls` it scans for the top winner. */
+function sumPoolLiability(pnls: OpenPositionPnl[]): bigint {
+  return pnls.reduce((sum, p) => sum + poolLiabilityOf(p), 0n);
+}
+
 /**
  * The pool's net liability to traders if every open position closed at the current mark right now.
  * This is the figure the MAX_PNL_FACTOR gate (opens) and the ADL backstop (force-close) measure
  * against LP NAV.
  */
 async function poolPnlLiability(q: Queryer): Promise<bigint> {
-  return (await openPositionPnls(q)).reduce((sum, p) => sum + poolLiabilityOf(p), 0n);
+  return sumPoolLiability(await openPositionPnls(q));
 }
 
 /** Recompute the market mark from current open-interest skew and persist+publish it.
@@ -717,8 +723,7 @@ export async function autoDeleverage(db: Db): Promise<number> {
   for (let pass = 0; pass < ADL_MAX_PER_SWEEP; pass++) {
     const nav = await lpDepth(db);
     const pnls = await openPositionPnls(db);
-    const liability = pnls.reduce((sum, p) => sum + poolLiabilityOf(p), 0n);
-    if (liability <= (nav * BigInt(config.adlPnlFactorBps)) / 10_000n) break;
+    if (sumPoolLiability(pnls) <= (nav * BigInt(config.adlPnlFactorBps)) / 10_000n) break;
 
     let top: OpenPositionPnl | null = null;
     for (const p of pnls) if (p.pnlUusdc > 0n && (top === null || p.pnlUusdc > top.pnlUusdc)) top = p;
