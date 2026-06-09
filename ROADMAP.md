@@ -99,7 +99,14 @@ one-sided, thin markets — exactly our profile (daily price + long-tail cards).
 formula quoter (B) is the counterparty for thin/long-tail cards (the common case — most cards are
 thin + daily-priced). C and D layer on as volume grows.
 
-**Before building, resolve (see doc Open questions):** (1) how LS-LMSR's bounded-loss proof adapts to
-a continuous-price leveraged perp with funding + liquidations, and the per-market worst-case USDC
-formula; (2) the routing rule for which markets use the vault vs the formula; (3) the actual numeric
-risk dials (caps, reserve %, `b`/`α`) from our own modelling. **No build work has started.**
+**Math spike (2026-06-09) — settled:** LS-LMSR's bounded-loss proof does **NOT** transfer to a
+leveraged perp (HIGH confidence; over-determined + an impossibility theorem). So **B is "adaptive
+depth" only (B′)** — the hard USDC loss cap comes from caps + maintenance margin + ADL + oracle-
+staleness halts, with per-market worst case `≈ (max OI) × (adverse oracle gap) × leverage − margin/
+funding`. Full reports: [`docs/liquidity-hybrid-spec.md`](docs/liquidity-hybrid-spec.md),
+[`docs/liquidity-lmsr-spike.md`](docs/liquidity-lmsr-spike.md).
+
+**Build sequence (no work started):** Phase 1 — pool-health gate + PnL-factor cap; Phase 2 — per-market
+adaptive depth (validate `b(q)` in fixed-point first — Augur dropped LS-LMSR over `exp()` precision);
+Phase 3 — auto-deleverage; Phase 4 (later) — rent house-neutral MMs (C/D). Calibrate the daily-feed
+gap term before sizing per-market OI/leverage caps.
