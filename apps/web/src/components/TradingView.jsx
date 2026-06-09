@@ -8,6 +8,14 @@ import * as api from '../lib/api.js';
 const TIMEFRAMES = ['1D', '1W', '1M', '3M', '1Y'];
 const px = (e6) => (e6 == null ? 0 : Number(e6) / 1_000_000);
 
+// Floor "now" to the current timeframe's bucket (hourly for 1D/1W, daily for 1M+), as UTC unix
+// seconds — must match the backend bucketing so the live point lands on/after the last candle.
+const bucketTime = (tf) => {
+  const sec = Math.floor(Date.now() / 1000);
+  const size = tf === '1D' || tf === '1W' ? 3600 : 86400;
+  return sec - (sec % size);
+};
+
 // Bound the bottom panel so both it and the chart stay usable.
 const PANEL_MIN = 120; // keep the tabs + a row of content visible
 const CHART_MIN = 150; // never starve the chart below this
@@ -19,6 +27,7 @@ export function TradingView({ market }) {
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const [tf, setTf] = useState('1M');
+  const [noData, setNoData] = useState(false);
   const [panelHeight, setPanelHeight] = useState(() => clampPanel(Number(localStorage.getItem('gachadex_panel_h')) || 210));
   const [dragging, setDragging] = useState(false);
 
@@ -82,6 +91,7 @@ export function TradingView({ market }) {
         if (!alive || !seriesRef.current) return;
         seriesRef.current.setData(candles.map((c) => ({ time: c.time, value: c.value })));
         chartRef.current?.timeScale().fitContent();
+        setNoData(candles.length === 0); // real-data only; show an empty state when there's no history
       })
       .catch(() => {});
     return () => {
@@ -89,16 +99,16 @@ export function TradingView({ market }) {
     };
   }, [market?.id, tf]);
 
-  // live-update the latest point from the mark feed
+  // live-update the latest point from the mark feed (bucket must match the active timeframe)
   useEffect(() => {
     if (!market || !seriesRef.current || !liveMark) return;
-    const today = new Date().toISOString().split('T')[0];
     try {
-      seriesRef.current.update({ time: today, value: px(liveMark) });
+      seriesRef.current.update({ time: bucketTime(tf), value: px(liveMark) });
+      setNoData(false); // a live point means there's something to show
     } catch {
       /* out-of-order time during history load */
     }
-  }, [liveMark, market?.id]);
+  }, [liveMark, market?.id, tf]);
 
   // persist the panel height + re-clamp it if the window shrinks
   useEffect(() => {
@@ -181,7 +191,10 @@ export function TradingView({ market }) {
         {market && market.status !== 'active' && <span className="market-halt-badge">{market.status.toUpperCase()}</span>}
       </div>
 
-      <div className="chart-container" ref={elRef} />
+      <div className="chart-wrap">
+        <div className="chart-container" ref={elRef} />
+        {noData && <div className="chart-empty">No price history yet — it builds as prices update and the market trades.</div>}
+      </div>
 
       <div className="panel-resizer" onMouseDown={startResize} title="Drag to resize" />
       <BottomPanel market={market} height={panelHeight} />

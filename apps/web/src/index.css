@@ -488,11 +488,31 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
 .tf-btn:hover { color: var(--text); }
 .tf-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
 
+.chart-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .chart-container {
   flex: 1;
   min-height: 0;
   width: 100%;
   overflow: hidden; /* clip the canvas so it can never bleed over the bottom panel */
+}
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1rem;
+  text-align: center;
+  color: #8b949e;
+  font-size: 10px;
+  line-height: 1.6;
+  pointer-events: none;
 }
 
 .bottom-panel {

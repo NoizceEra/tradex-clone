@@ -62,14 +62,16 @@ test('ingest seeds card markets, indices, oracle prints and marks', async () => 
   }
 });
 
-test('candles endpoint returns a populated, deterministic series', async () => {
+test('candles endpoint returns REAL marks (no fabrication), newest = current mark', async () => {
   const markets = await listMarketsWithData(db);
   const chari = markets.find((m) => m.symbol === 'sv-1')!;
   const a = await getCandles(db, chari.id, 30);
   const b = await getCandles(db, chari.id, 30);
-  assert.ok(a.length >= 20);
-  assert.deepEqual(a, b, 'series is deterministic across calls');
-  assert.equal(a[a.length - 1].value, 1200); // ends at current mark
+  assert.deepEqual(a, b, 'real series, stable across calls (no random walk)');
+  assert.ok(a.length >= 1, 'at least the latest mark');
+  assert.ok(a.length <= 30, 'no padded/synthetic points beyond real history'); // would be ~31 if fabricated
+  assert.ok(a.every((c) => typeof c.time === 'number'), 'time is a unix timestamp');
+  assert.equal(a[a.length - 1].value, 1200); // ends at the current mark
 });
 
 test('outlier guard rejects an implausible price jump', async () => {

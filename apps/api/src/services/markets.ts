@@ -186,64 +186,24 @@ export async function listMarketsWithData(db: Db): Promise<MarketView[]> {
   });
 }
 
-/** Deterministic per-market PRNG so synthetic history doesn't reshuffle each call. */
-function seededRand(seedStr: string): () => number {
-  let h = 2166136261;
-  for (let i = 0; i < seedStr.length; i++) {
-    h ^= seedStr.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  let a = h >>> 0;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 export interface Candle {
-  time: string; // YYYY-MM-DD
+  time: number; // UTC unix seconds (bucket start)
   value: number;
 }
 
 /**
- * Candle history for the chart. Returns real `marks` history when we have enough points;
- * otherwise a DETERMINISTIC seeded series ending at the current mark (so the chart is
- * populated and stable across reloads — never re-randomized like the old client mock).
+ * Real price history for the chart, from the `marks` series. Buckets are intraday (hourly) for short
+ * windows and daily for longer ones; each bucket's value is its last mark (the close). NO synthetic /
+ * fabricated data — a market with no history returns [] and the UI shows an empty state.
  */
 export async function getCandles(db: Db, marketId: string, days: number): Promise<Candle[]> {
-  const real = await db.query<{ d: string; v: string }>(
-    `SELECT to_char(computed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS d, (array_agg(mark_price_e6 ORDER BY computed_at DESC))[1]::text AS v
+  const bucket = days <= 7 ? 'hour' : 'day'; // intraday for 1D/1W, daily for 1M+
+  const r = await db.query<{ t: string; v: string }>(
+    `SELECT extract(epoch FROM date_trunc($3, computed_at AT TIME ZONE 'UTC'))::bigint::text AS t,
+            (array_agg(mark_price_e6 ORDER BY computed_at DESC))[1]::text AS v
      FROM marks WHERE market_id = $1 AND computed_at > now() - ($2 || ' days')::interval
-     GROUP BY to_char(computed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') ORDER BY d`,
-    [marketId, String(days)],
+     GROUP BY date_trunc($3, computed_at AT TIME ZONE 'UTC') ORDER BY t`,
+    [marketId, String(days), bucket],
   );
-  if (real.rows.length >= 10) {
-    return real.rows.map((r) => ({ time: r.d, value: Number(r.v) / 1_000_000 }));
-  }
-
-  // synthetic, anchored to the latest mark
-  const latest = await db.query<{ v: string }>(
-    `SELECT mark_price_e6::text AS v FROM marks WHERE market_id = $1 ORDER BY computed_at DESC LIMIT 1`,
-    [marketId],
-  );
-  const endValue = latest.rows[0] ? Number(latest.rows[0].v) / 1_000_000 : 0;
-  if (endValue <= 0) return [];
-
-  const rand = seededRand(marketId);
-  const out: Candle[] = [];
-  let cur = endValue * 0.78;
-  const today = new Date();
-  for (let i = days; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    cur = Math.max(cur + (rand() - 0.45) * endValue * 0.04, endValue * 0.1);
-    if (i === 0) cur = endValue;
-    out.push({ time: d.toISOString().split('T')[0], value: Math.round(cur * 100) / 100 });
-  }
-  // dedupe by day
-  const seen = new Set<string>();
-  return out.filter((c) => (seen.has(c.time) ? false : (seen.add(c.time), true)));
+  return r.rows.map((row) => ({ time: Number(row.t), value: Number(row.v) / 1_000_000 }));
 }
