@@ -8,6 +8,7 @@ import { Portfolio } from './components/Portfolio';
 import { PoolView } from './components/PoolView';
 import { Leaderboard } from './components/Leaderboard';
 import { AdminPanel } from './components/AdminPanel';
+import { Landing } from './components/Landing';
 import { ChatSidebar } from './components/ChatSidebar';
 import { Toasts } from './components/Toasts';
 import { useRealtime } from './store/realtime';
@@ -20,7 +21,11 @@ function App() {
   const [markets, setMarkets] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState('trade');
+  const [activeView, setActiveView] = useState(() => {
+    if (window.location.hash === '#home') return 'home';
+    if (window.location.hash === '#admin') return 'admin';
+    return localStorage.getItem('gachadex_entered') ? 'trade' : 'home'; // landing first, then remembered
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(() => localStorage.getItem('gachadex_chat_open') !== '0');
   const startRealtime = useRealtime((s) => s.start);
@@ -70,6 +75,14 @@ function App() {
     setSelectedId(m.id);
     setActiveView('trade');
   };
+  const enterApp = () => {
+    localStorage.setItem('gachadex_entered', '1');
+    if (window.location.hash === '#home') history.replaceState(null, '', window.location.pathname + window.location.search);
+    setActiveView('trade');
+  };
+
+  // The marketing landing is its own full-screen page (no trading chrome) — render it before the app shell.
+  if (activeView === 'home') return <Landing onEnter={enterApp} />;
 
   return (
     <>
