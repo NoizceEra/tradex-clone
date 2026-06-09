@@ -110,6 +110,12 @@ export const SetPriceRequest = z.object({
   note: z.string().max(200).optional(), // audit note (source/why)
 });
 
+// Operator seeds/rebalances the insurance buffer from a funded account's collateral (admin op).
+export const InsuranceFundRequest = z.object({
+  userId: z.string().min(1), // the funded account to move collateral to/from
+  amountUusdc: MicroStr, // micro-USDC
+});
+
 // --- real-funds wallet (custody P2) -------------------------------------------
 // Withdrawals need a step-up: the wallet signs a server-rendered message over the EXACT
 // (amount, dest, nonce) — get the message from /wallet/withdraw/nonce, sign it, submit both.

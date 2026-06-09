@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { SetPriceRequest } from '@pokex/shared-types';
+import { SetPriceRequest, InsuranceFundRequest } from '@pokex/shared-types';
 import { config } from '../config.ts';
 import { getDb } from '../db/client.ts';
 import { rl } from './_ratelimit.ts';
 import { requireAdminKey } from './admin.ts';
 import { setManualPrice, setPricePin } from '../services/admin-pricing.ts';
+import { fundInsurance, defundInsurance, getInsurance } from '../services/insurance.ts';
 
 /**
  * Non-custody operator endpoints (ROADMAP §2). Unlike the custody admin routes, these register
@@ -36,5 +37,17 @@ export async function adminOpsRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string };
     await setPricePin(await getDb(), id, false);
     return { id, pinned: false };
+  });
+
+  // Insurance buffer (absorbs gap bad-debt before LPs). GET the balance; deposit/withdraw move it
+  // to/from a funded account's collateral — the operator pre-seeds it from real USDC they deposited.
+  app.get('/admin/insurance', rl(config.routeRateLimits.admin), async () => getInsurance(await getDb()));
+  app.post('/admin/insurance/deposit', rl(config.routeRateLimits.admin), async (req) => {
+    const input = InsuranceFundRequest.parse(req.body);
+    return fundInsurance(await getDb(), input.userId, BigInt(input.amountUusdc));
+  });
+  app.post('/admin/insurance/withdraw', rl(config.routeRateLimits.admin), async (req) => {
+    const input = InsuranceFundRequest.parse(req.body);
+    return defundInsurance(await getDb(), input.userId, BigInt(input.amountUusdc));
   });
 }

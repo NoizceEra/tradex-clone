@@ -122,7 +122,9 @@ buffer** covers the slippage between the liquidation trigger and the actual fill
 1. **Measure the daily gap `g`** from a real DAILY single-card series for the listed cards — *the
    governing input*; everything scales off it. (The verified data is monthly.)
 2. **Size the insurance fund** vs NAV/OI to cover the liquidation-trigger → next-print fill gap. **No
-   venue has a daily oracle, so this buffer has no precedent — it needs its own simulation.**
+   venue has a daily oracle, so this buffer has no precedent — it needs its own simulation.** *(Funding
+   it is now wired: operators pre-seed/rebalance via `POST /admin/insurance/deposit|withdraw`; it also
+   keeps filling from the 1% liquidation penalty. The open question is the right **size**, not the how.)*
 3. **Backtest** the proposed leverage / MM / OI caps against the daily gap distribution (worst-case +
    simultaneous multi-market gaps).
 4. **Re-pull venue params at build time** — Hyperliquid/dYdX/GMX settings are governance-adjustable and
