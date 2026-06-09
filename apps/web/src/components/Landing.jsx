@@ -57,18 +57,20 @@ export function Landing({ onEnter, chatOpen, onToggleChat }) {
       <ChatSidebar open={chatOpen} onToggle={onToggleChat} />
 
       <header className="lp-nav">
-        <a className="lp-brand" href="#" onClick={enter}>
-          <img src="/GachaDexPFP2.png" alt="" className="lp-logo" />
-          <img src="/GachaDexWords.png" alt="GachaDex" className="lp-wordmark" />
-        </a>
-        <nav className="lp-nav-links">
-          <a href="#how" onClick={scrollTo('how')}>HOW IT WORKS</a>
-          <a href="#why" onClick={scrollTo('why')}>FEATURES</a>
-          <a href="#faq" onClick={scrollTo('faq')}>FAQ</a>
+        <div className="lp-nav-left">
+          <a className="lp-brand" href="#" onClick={enter}>
+            <img src="/GachaDexPFP2.png" alt="" className="lp-logo" />
+            <img src="/GachaDexWords.png" alt="GachaDex" className="lp-wordmark" />
+          </a>
           <button className={`chat-toggle ${chatOpen ? 'active' : ''}`} onClick={onToggleChat} title={chatOpen ? 'Hide chat' : 'Open chat'}>
             💬 Chat
             {!chatOpen && unread > 0 && <span className="chat-badge">{unread > 99 ? '99+' : unread}</span>}
           </button>
+        </div>
+        <nav className="lp-nav-links">
+          <a href="#how" onClick={scrollTo('how')}>HOW IT WORKS</a>
+          <a href="#why" onClick={scrollTo('why')}>FEATURES</a>
+          <a href="#faq" onClick={scrollTo('faq')}>FAQ</a>
           <button className="lp-btn lp-btn-sm" onClick={enter}>ENTER ▶</button>
         </nav>
       </header>
