@@ -168,7 +168,22 @@ async function adminReq(path, adminKey, body) {
   }
   return res.json();
 }
+async function adminGet(path, adminKey) {
+  const res = await fetch(`${API_URL}${path}`, { headers: { 'x-admin-key': adminKey } });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(e.error || `request failed (${res.status})`);
+  }
+  return res.json();
+}
 export const adminSetPrice = (id, body, adminKey) => adminReq(`/admin/markets/${id}/price`, adminKey, body);
 export const adminUnpin = (id, adminKey) => adminReq(`/admin/markets/${id}/unpin`, adminKey);
+// Treasury + insurance. /admin/treasury (full PoR view incl. insurance + allocatable surplus) is
+// real-funds-only; /admin/insurance (balance) + the fee-allocation moves work in play-money too.
+export const adminGetTreasury = (adminKey) => adminGet('/admin/treasury', adminKey);
+export const adminGetInsurance = (adminKey) => adminGet('/admin/insurance', adminKey);
+export const adminInsuranceFromFees = (amountUusdc, adminKey) => adminReq('/admin/insurance/from-fees', adminKey, { amountUusdc });
+export const adminInsuranceToFees = (amountUusdc, adminKey) => adminReq('/admin/insurance/to-fees', adminKey, { amountUusdc });
+export const adminInsuranceFromTreasury = (amountUusdc, adminKey) => adminReq('/admin/insurance/from-treasury', adminKey, { amountUusdc });
 
 export const apiConfig = { API_URL };
