@@ -24,7 +24,6 @@ export function NetworkIndicator() {
   };
 
   const getClusterLabel = (c) => {
-    if (c === 'devnet') return 'Devnet (Play Money)';
     return c.charAt(0).toUpperCase() + c.slice(1);
   };
 
