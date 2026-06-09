@@ -115,6 +115,10 @@ force-closes top winners pool-wide each sweep, off by default); Phase 4 (later) 
 50–60% / ADL 70–80% of NAV (ADL stays **above** the gate — our open-gate isn't GMX's profit hard-cap, see
 doc §4), α calibrated to volume. ADL web toast: **✅ done**.
 
+**Phase 4a — NAV-relative OI cap: ✅ done.** `OI_CAP_NAV_BPS` caps each side's OI at a fraction of LP NAV
+(on top of the static per-market cap), so one position can't outgrow the pool — the fix for the
+negative-NAV finding the live exercise surfaced. Off by default; ~3000–5000 for real funds. (`oi-cap-nav.test.ts`.)
+
 **Still to validate before real-funds launch (doc §7):** measure the actual DAILY single-card price gap
 `g` (the governing input — verified data is only monthly); size the insurance fund for the liquidation→
 next-print slippage (no daily-oracle precedent); backtest the caps; re-pull venue params at build time.

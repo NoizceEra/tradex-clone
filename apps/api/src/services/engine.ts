@@ -327,21 +327,26 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
       if (margin <= 0n) throw new HttpError(400, 'order too small');
       const openFee = fee(notion, config.openFeeBps);
 
-      // open-interest cap (per side) protects the LP pool
+      // ---- pool-protection checks (all per side) -----------------------------------------------
       const sideCap = input.side === 'long' ? BigInt(market.max_oi_long_uusdc) : BigInt(market.max_oi_short_uusdc);
       const sideOi = (await openNotionalBySide(q, market.id))[input.side === 'long' ? 'longOi' : 'shortOi'];
+      // 1) static per-market OI cap (0 = no static cap) — cheapest, in-memory; reject before any NAV read
       if (sideCap > 0n && sideOi + notion > sideCap) {
         throw new HttpError(400, 'open interest cap reached for this side');
       }
-
-      // pool-health gate (GMX-style MAX_PNL_FACTOR): once the pool already owes traders more than
-      // maxPnlFactor of NAV, pause new opens so a thin/underfunded pool can't be drained by net
-      // winners. Disabled when maxPnlFactorBps=0 (play-money default; the pool runs uncapitalized).
+      // NAV is read once and shared by both NAV-relative checks below (only when one is enabled).
+      const nav = config.oiCapNavBps > 0 || config.maxPnlFactorBps > 0 ? await lpDepth(q) : 0n;
+      // 2) NAV-relative OI cap (oiCapNavBps>0): one side's OI can't exceed this fraction of LP NAV, so a
+      // market's worst-case PnL vs the pool can't outgrow the vault as NAV shrinks (calibration 0.3-0.5×NAV).
+      // Always enforced when enabled — at NAV≤0 the cap is 0, so an uncapitalized pool takes no new risk.
+      if (config.oiCapNavBps > 0 && sideOi + notion > (nav * BigInt(config.oiCapNavBps)) / 10_000n) {
+        throw new HttpError(400, 'open interest cap reached for this side (pool-relative)');
+      }
+      // 3) pool-health gate (GMX-style MAX_PNL_FACTOR): once the pool already owes traders more than
+      // maxPnlFactor of NAV, pause new opens so a thin/underfunded pool can't be drained by net winners.
       if (config.maxPnlFactorBps > 0) {
-        const nav = await lpDepth(q);
         if (nav <= 0n) throw new HttpError(409, 'liquidity pool is not capitalized; new positions are paused');
-        const cap = (nav * BigInt(config.maxPnlFactorBps)) / 10_000n;
-        if ((await poolPnlLiability(q)) > cap) {
+        if ((await poolPnlLiability(q)) > (nav * BigInt(config.maxPnlFactorBps)) / 10_000n) {
           throw new HttpError(409, 'pool risk limit reached; new positions are paused');
         }
       }

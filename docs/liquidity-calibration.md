@@ -67,9 +67,15 @@ gap ⇒ a position's margin should roughly cover a full adverse gap ⇒ **~2–3
 | Depth α | `DEPTH_ALPHA_E6` | 1.0 | **calibrate** (§5) | so a typical trade's premium is a few % at expected volume |
 
 The OI cap is the lever that fixes the deep-QA finding (a single position's PnL exceeding NAV): tying
-`OI_cap ≈ 0.3–0.5×NAV` keeps one market's worst-case `OI×g` to ~10–15% of NAV. **These should become
-NAV-relative (auto-scaling) rather than the current fixed dollar caps** — a Phase-4 enhancement; for now
-an operator sets the per-market `max_oi_*_uusdc` columns to the NAV-derived figure.
+`OI_cap ≈ 0.3–0.5×NAV` keeps one market's worst-case `OI×g` to ~10–15% of NAV.
+
+> **✅ Built (Phase 4a): `OI_CAP_NAV_BPS`.** The engine now enforces a NAV-relative per-side OI cap
+> automatically — each side's OI can't exceed `OI_CAP_NAV_BPS` of LP NAV, *on top of* the static
+> per-market cap (the binding one wins). 0 = disabled (play-money default). Set it to ~3000–5000 for
+> real funds. This removes the "operator must hand-set the right dollar cap per market" footgun; the
+> static `max_oi_*_uusdc` columns remain as an additional fixed ceiling. Verified live: under
+> `OI_CAP_NAV_BPS=5000`, the same +30% gap that drove NAV to −$825 leaves the pool solvent
+> (NAV $10k → $8.8k) because the oversized position is rejected at open.
 
 ## 4. Open-gate vs ADL ordering — keep `adl ≥ maxPnl` (reconciling the GMX finding)
 

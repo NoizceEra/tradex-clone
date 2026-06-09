@@ -114,6 +114,13 @@ export const config = {
   // ADL fires. 0 = DISABLED (play-money default). See docs/liquidity-hybrid-spec.md §6.
   adlPnlFactorBps: num('ADL_PNL_FACTOR_BPS', 0),
 
+  // NAV-relative open-interest cap (Phase 4a). On top of the static per-market OI cap, limit each
+  // side's OI to this fraction of LP NAV, so one market's worst-case PnL can't outgrow the pool as NAV
+  // shrinks — the fix for "a single position out-earns the vault" (the static $50k/$250k caps are
+  // unrelated to pool size). Calibration suggests ~3000-5000 (0.3-0.5×NAV); see
+  // docs/liquidity-calibration.md §3. 0 = DISABLED (play-money default; the static cap still applies).
+  oiCapNavBps: num('OI_CAP_NAV_BPS', 0),
+
   // --- Real-funds custody (P0 scaffolding; unused until the REAL_FUNDS paths land) ---
   // See docs/real-funds-custody-plan.md. Env-only; keys/seeds are never hardcoded — the HD master
   // seed lives in KMS and only its reference is configured here.
