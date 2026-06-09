@@ -21,11 +21,8 @@ function App() {
   const [markets, setMarkets] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState(() => {
-    if (window.location.hash === '#home') return 'home';
-    if (window.location.hash === '#admin') return 'admin';
-    return localStorage.getItem('gachadex_entered') ? 'trade' : 'home'; // landing first, then remembered
-  });
+  // Always default to the landing on a fresh load; #admin is the only deep-link exception.
+  const [activeView, setActiveView] = useState(() => (window.location.hash === '#admin' ? 'admin' : 'home'));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(() => localStorage.getItem('gachadex_chat_open') !== '0');
   const startRealtime = useRealtime((s) => s.start);
@@ -75,11 +72,7 @@ function App() {
     setSelectedId(m.id);
     setActiveView('trade');
   };
-  const enterApp = () => {
-    localStorage.setItem('gachadex_entered', '1');
-    if (window.location.hash === '#home') history.replaceState(null, '', window.location.pathname + window.location.search);
-    setActiveView('trade');
-  };
+  const enterApp = () => setActiveView('trade'); // in-session only; a reload returns to the landing
 
   // The marketing landing is its own full-screen page (no trading chrome) — render it before the app shell.
   if (activeView === 'home') return <Landing onEnter={enterApp} />;
