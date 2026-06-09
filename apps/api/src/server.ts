@@ -13,6 +13,7 @@ import { historyRoutes } from './routes/history.ts';
 import { chatRoutes } from './routes/chat.ts';
 import { walletRoutes } from './routes/wallet.ts';
 import { adminRoutes, type AdminChains } from './routes/admin.ts';
+import { adminOpsRoutes } from './routes/admin-ops.ts';
 import { registerWs } from './plugins/ws.ts';
 
 export interface BuildServerOpts {
@@ -86,7 +87,13 @@ export async function buildServer(opts: BuildServerOpts = {}): Promise<FastifyIn
   await app.register(chatRoutes);
   await app.register(walletRoutes);
 
-  // Operator surface: real funds + a configured admin key only (otherwise the routes don't exist).
+  // Non-custody operator surface (manual price override, etc.): registers whenever an admin key is
+  // set — including play-money mode — because it never moves real funds (ROADMAP §2).
+  if (config.adminApiKey) {
+    await app.register(adminOpsRoutes);
+  }
+
+  // Custody operator surface: real funds + a configured admin key only (otherwise the routes don't exist).
   if (config.realFunds && config.adminApiKey) {
     let chains = opts.adminChains;
     if (!chains) {

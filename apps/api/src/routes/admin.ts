@@ -35,7 +35,7 @@ export interface AdminChains {
 
 // async on purpose: Fastify resolves arity-2 hooks by their returned promise — a plain function
 // returning undefined on the success path would leave the request hanging forever.
-async function requireAdminKey(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+export async function requireAdminKey(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   const given = req.headers['x-admin-key'];
   const expected = Buffer.from(config.adminApiKey);
   const got = Buffer.from(typeof given === 'string' ? given : '');

@@ -102,6 +102,14 @@ export const FaucetRequest = z.object({
   amountUsd: z.number().positive().max(100_000).default(10_000),
 });
 
+// --- operator manual price override (admin; ROADMAP §2) -----------------------
+export const SetPriceRequest = z.object({
+  priceE6: MicroStr, // micro-USD price to set for the market (card or index)
+  pin: z.boolean().optional(), // default true server-side; pin so the auto-oracle won't overwrite
+  force: z.boolean().optional(), // bypass the fat-finger guard (>10x move)
+  note: z.string().max(200).optional(), // audit note (source/why)
+});
+
 // --- real-funds wallet (custody P2) -------------------------------------------
 // Withdrawals need a step-up: the wallet signs a server-rendered message over the EXACT
 // (amount, dest, nonce) — get the message from /wallet/withdraw/nonce, sign it, submit both.

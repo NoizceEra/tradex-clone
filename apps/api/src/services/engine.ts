@@ -142,8 +142,9 @@ async function lpDepth(q: Queryer): Promise<bigint> {
   return getBalance(q, lp);
 }
 
-/** Recompute the market mark from current open-interest skew and persist+publish it. */
-async function refreshMark(q: Queryer, market: MarketRow, indexE6: bigint): Promise<void> {
+/** Recompute the market mark from current open-interest skew and persist+publish it.
+ *  Exported so the manual-price (admin) path recomputes the mark exactly like a trade does. */
+export async function refreshMark(q: Queryer, market: MarketRow, indexE6: bigint): Promise<bigint> {
   const oi = await q.query<{ side: string; q: string }>(
     `SELECT side, COALESCE(SUM(qty_e6),0)::text AS q FROM positions WHERE market_id=$1 AND status='open' GROUP BY side`,
     [market.id],
@@ -155,12 +156,13 @@ async function refreshMark(q: Queryer, market: MarketRow, indexE6: bigint): Prom
     else shortQ = BigInt(row.q);
   }
   const skewUusdc = ((longQ - shortQ) * indexE6) / 1_000_000n;
-  await recomputeMark(q, market, indexE6, skewUusdc, await lpDepth(q));
+  const markE6 = await recomputeMark(q, market, indexE6, skewUusdc, await lpDepth(q));
   publish(`oi:${market.id}`, 'oi', {
     marketId: market.id,
     longUusdc: ((longQ * indexE6) / 1_000_000n).toString(),
     shortUusdc: ((shortQ * indexE6) / 1_000_000n).toString(),
   });
+  return markE6;
 }
 
 /** Post-mutation refresh: recompute the mark from current skew and the pool's reserved capital. */

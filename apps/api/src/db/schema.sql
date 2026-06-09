@@ -161,6 +161,7 @@ CREATE TABLE IF NOT EXISTS markets (
   min_qty_e6         BIGINT NOT NULL DEFAULT 10000,   -- 0.01 units
   qty_step_e6        BIGINT NOT NULL DEFAULT 10000,
   price_tick_e6      BIGINT NOT NULL DEFAULT 10000,   -- $0.01
+  price_pinned       BOOLEAN NOT NULL DEFAULT false,  -- operator manual-price override; auto-oracle skips pinned markets
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_markets_kind ON markets(kind, status);
@@ -170,6 +171,7 @@ ALTER TABLE markets ADD COLUMN IF NOT EXISTS game TEXT NOT NULL DEFAULT 'pokemon
 CREATE INDEX IF NOT EXISTS idx_markets_game ON markets(game, kind, status);
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS set_logo TEXT;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS metadata JSONB;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS price_pinned BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS graded_psa10_e6 BIGINT;
 
 CREATE TABLE IF NOT EXISTS index_constituents (
