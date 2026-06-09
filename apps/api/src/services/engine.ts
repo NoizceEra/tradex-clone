@@ -142,6 +142,29 @@ async function lpDepth(q: Queryer): Promise<bigint> {
   return getBalance(q, lp);
 }
 
+/**
+ * The pool's net liability to traders if every open position closed at the current mark right now:
+ * winners' unrealized profit is owed in full; losers' losses count only up to their margin, since
+ * isolated margin means the pool can't collect beyond it. This is the figure the MAX_PNL_FACTOR
+ * gate measures against LP NAV. (One scan over open positions joined to each market's latest mark.)
+ */
+async function poolPnlLiability(q: Queryer): Promise<bigint> {
+  const r = await q.query<{ side: string; qty_e6: string; avg_entry_e6: string; margin_uusdc: string; mark: string }>(
+    `SELECT p.side, p.qty_e6::text AS qty_e6, p.avg_entry_e6::text AS avg_entry_e6, p.margin_uusdc::text AS margin_uusdc,
+            k.mark_price_e6::text AS mark
+     FROM positions p
+     JOIN LATERAL (SELECT mark_price_e6 FROM marks WHERE market_id=p.market_id ORDER BY computed_at DESC LIMIT 1) k ON true
+     WHERE p.status='open'`,
+  );
+  let liability = 0n;
+  for (const row of r.rows) {
+    const pnl = unrealizedPnl(row.side as 'long' | 'short', BigInt(row.qty_e6), BigInt(row.avg_entry_e6), BigInt(row.mark));
+    const margin = BigInt(row.margin_uusdc); // always > 0 for an open position
+    liability += pnl < -margin ? -margin : pnl; // floor a loser's contribution at its margin
+  }
+  return liability;
+}
+
 /** Recompute the market mark from current open-interest skew and persist+publish it.
  *  Exported so the manual-price (admin) path recomputes the mark exactly like a trade does. */
 export async function refreshMark(q: Queryer, market: MarketRow, indexE6: bigint): Promise<bigint> {
@@ -231,6 +254,18 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
       const sideOi = (await openNotionalBySide(q, market.id))[input.side === 'long' ? 'longOi' : 'shortOi'];
       if (sideCap > 0n && sideOi + notion > sideCap) {
         throw new HttpError(400, 'open interest cap reached for this side');
+      }
+
+      // pool-health gate (GMX-style MAX_PNL_FACTOR): once the pool already owes traders more than
+      // maxPnlFactor of NAV, pause new opens so a thin/underfunded pool can't be drained by net
+      // winners. Disabled when maxPnlFactorBps=0 (play-money default; the pool runs uncapitalized).
+      if (config.maxPnlFactorBps > 0) {
+        const nav = await lpDepth(q);
+        if (nav <= 0n) throw new HttpError(409, 'liquidity pool is not capitalized; new positions are paused');
+        const cap = (nav * BigInt(config.maxPnlFactorBps)) / 10_000n;
+        if ((await poolPnlLiability(q)) > cap) {
+          throw new HttpError(409, 'pool risk limit reached; new positions are paused');
+        }
       }
 
       const collAcct = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');

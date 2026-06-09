@@ -14,15 +14,20 @@ correcting against the code:
 - **There is no per-market LP.** There is **one global LP vault** (`lp_pool`, ERC-4626-style shares —
   `apps/api/src/services/lp.ts`). All trader PnL settles against the single `LP_POOL` ledger account
   (`engine.ts:351`). One global `INSURANCE_FUND` backs all markets.
-- **Every market already quotes a price from day one**, even with an empty pool. The mark formula uses
-  a **virtual depth floor of $1M** (`DEPTH_FLOOR = 1_000_000_000_000n`, `marks.ts:7`) for the price-
-  impact term, so `premium = clamp(k · skew/depth, ±cap)` stays small on a fresh market.
+- **Every market already quotes a price from day one** *on an empty pool*. The mark formula falls back
+  to a **virtual depth floor of $1M** (`DEPTH_FLOOR = 1_000_000_000_000n`, `marks.ts:7`) **only when NAV
+  is exactly zero**, so `premium = clamp(k · skew/depth, ±cap)` stays small on a fresh, unfunded market.
 
   ```
   premium = clamp(k · skew/depth, ±premiumCap)          // packages/pricing/src/index.js:157
   mark    = clamp(index · (1 + premium), ±maxDev)        // index = oracle/manual price
-  depth   = max(LP free capital, $1M floor)              // marks.ts:7
+  depth   = NAV > 0 ? NAV : $1M floor                    // marks.ts:25  (floor only when empty!)
   ```
+
+  > **⚠️ Thin-pool gotcha (verified in test):** the floor is a *fallback*, not a minimum. The moment any
+  > real LP capital lands, `depth = NAV` — so a thinly-funded pool (e.g. $1k) divides a $5k skew by $1k
+  > and pins the premium straight to its cap (mark jumps the full ±`premiumCap`). This is a strong
+  > argument for **B′** to make depth `max(NAV, α·volume, floor)` rather than today's NAV-or-floor.
 
 - **So the real gap is solvency, not quoting.** Trading "doesn't work" on an underfunded pool because
   when traders **net-win**, `LP_POOL` would go negative — there's no money to pay them. The insurance/

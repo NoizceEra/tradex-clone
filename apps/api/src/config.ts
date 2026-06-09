@@ -89,6 +89,14 @@ export const config = {
   liquidationSweepMs: num('LIQUIDATION_SWEEP_MS', 5_000),
   oracleStaleMs: num('ORACLE_STALE_MS', 36 * 60 * 60 * 1000), // halt a market if no fresh print
 
+  // Pool risk cap (GMX-style MAX_PNL_FACTOR). Pause NEW opens once the pool's net liability to
+  // traders (winners' unrealized profit, losers' losses capped at their margin) exceeds this
+  // fraction of LP NAV — the "stop digging" guard that keeps a thin/underfunded pool from being
+  // drained by net winners (ADL is the active backstop, a later phase). 0 = DISABLED, which is the
+  // play-money default (the pool runs uncapitalized there); operators set this for real funds.
+  // See docs/liquidity-hybrid-spec.md §2.
+  maxPnlFactorBps: num('MAX_PNL_FACTOR_BPS', 0),
+
   // --- Real-funds custody (P0 scaffolding; unused until the REAL_FUNDS paths land) ---
   // See docs/real-funds-custody-plan.md. Env-only; keys/seeds are never hardcoded — the HD master
   // seed lives in KMS and only its reference is configured here.
