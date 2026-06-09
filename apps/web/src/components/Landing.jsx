@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { ChatSidebar } from './ChatSidebar';
+import { useChat } from '../store/chat';
 import '../landing.css';
 
 const CYCLE = ['LONG', 'SHORT', 'LONG', 'SHORT']; // hero word swap (gold)
@@ -32,7 +34,8 @@ const FAQ = [
   ['Do I own the cards?', 'No. GachaDex is price exposure, not physical custody. You trade the market without ever shipping a card.'],
 ];
 
-export function Landing({ onEnter }) {
+export function Landing({ onEnter, chatOpen, onToggleChat }) {
+  const unread = useChat((s) => s.unread);
   const [w, setW] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setW((i) => (i + 1) % CYCLE.length), 1600);
@@ -49,8 +52,9 @@ export function Landing({ onEnter }) {
   };
 
   return (
-    <div className="lp">
+    <div className={`lp ${chatOpen ? 'lp-chat-open' : ''}`}>
       <div className="lp-scanlines" aria-hidden="true" />
+      <ChatSidebar open={chatOpen} onToggle={onToggleChat} />
 
       <header className="lp-nav">
         <a className="lp-brand" href="#" onClick={enter}>
@@ -61,6 +65,10 @@ export function Landing({ onEnter }) {
           <a href="#how" onClick={scrollTo('how')}>HOW IT WORKS</a>
           <a href="#why" onClick={scrollTo('why')}>FEATURES</a>
           <a href="#faq" onClick={scrollTo('faq')}>FAQ</a>
+          <button className={`chat-toggle ${chatOpen ? 'active' : ''}`} onClick={onToggleChat} title={chatOpen ? 'Hide chat' : 'Open chat'}>
+            💬 Chat
+            {!chatOpen && unread > 0 && <span className="chat-badge">{unread > 99 ? '99+' : unread}</span>}
+          </button>
           <button className="lp-btn lp-btn-sm" onClick={enter}>ENTER ▶</button>
         </nav>
       </header>

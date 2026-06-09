@@ -795,6 +795,11 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
   color: var(--gold) !important;
 }
 
+/* Connect-modal wallet rows: left-align every row. The global justify-content:center (for the
+   trigger button) otherwise centers wallets with no "Detected" badge (e.g. Solflare), while
+   detected ones look left-aligned only because that badge carries margin-left:auto. */
+.wallet-adapter-modal-list .wallet-adapter-button { justify-content: flex-start !important; }
+
 .place-order-btn {
   width: 100%;
   padding: 1rem;

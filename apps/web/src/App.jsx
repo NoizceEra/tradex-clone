@@ -75,7 +75,8 @@ function App() {
   const enterApp = () => setActiveView('trade'); // in-session only; a reload returns to the landing
 
   // The marketing landing is its own full-screen page (no trading chrome) — render it before the app shell.
-  if (activeView === 'home') return <Landing onEnter={enterApp} />;
+  // Chat (button + fixed overlay) rides along so it's available on the landing too.
+  if (activeView === 'home') return <Landing onEnter={enterApp} chatOpen={chatOpen} onToggleChat={toggleChat} />;
 
   return (
     <>

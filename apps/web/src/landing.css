@@ -14,7 +14,10 @@
   background-size: 30px 30px;
   min-height: 100vh;
   overflow-x: hidden;
+  transition: padding-left 0.22s ease;
 }
+/* shift the page right when the chat overlay is open (mirrors .app-container.chat-open) */
+.lp-chat-open { padding-left: 280px; }
 
 /* CRT scanline overlay */
 .lp-scanlines {
