@@ -1,46 +1,79 @@
 import { HttpError } from '../errors.ts';
 import type { Db } from '../db/client.ts';
-import { getOrCreateUserAccount, getOrCreateSystemAccount, getBalance, postTxn } from './ledger.ts';
+import { getOrCreateSystemAccount, getBalance, postTxn } from './ledger.ts';
 
 /**
  * The insurance fund is the buffer that absorbs gap-driven bad debt (a liquidation that blows past
- * the margin) BEFORE it socializes to LPs. Out of the box it only fills from liquidation penalties;
- * these let an operator pre-seed and manage it.
+ * the trader's margin) BEFORE it socializes to LPs. Loss waterfall: trader margin -> insurance -> LP.
  *
- * Funding moves a funded account's collateral into the INSURANCE_FUND ledger account — symmetric to
- * an LP deposit, but with no shares (it's a donation to the buffer, not a yield-bearing stake). No
- * real USDC leaves custody: the on-chain reserves are unchanged, the ledger just reassigns the claim
- * from the operator's collateral to the house buffer (so it stops counting as money owed to a user).
+ * It auto-fills from the 1% liquidation penalty. These let an operator pre-seed / top it up from
+ * HOUSE money — never from money owed to users. Two sources:
+ *   (a) accumulated platform fees (FEE_REVENUE): pure ledger move, house earnings already in custody.
+ *   (b) treasury surplus: real USDC the operator has sent into the treasury (on-chain reserves beyond
+ *       liabilities). The caller verifies the surplus against the live on-chain balance first, so you
+ *       can never allocate money that isn't actually there (which would otherwise trip a PoR breach).
+ * No real USDC moves on-chain in any of these — they only re-label which house bucket holds the claim.
  */
-export async function fundInsurance(db: Db, userId: string, amountUusdc: bigint): Promise<{ insuranceUusdc: string }> {
+
+/** (a) Move accumulated platform fees into the insurance buffer. */
+export async function allocateFeesToInsurance(db: Db, amountUusdc: bigint): Promise<{ insuranceUusdc: string; feeRevenueUusdc: string }> {
   if (amountUusdc <= 0n) throw new HttpError(400, 'amount must be positive');
   return db.tx(async (q) => {
-    const coll = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
+    const fees = await getOrCreateSystemAccount(q, 'FEE_REVENUE');
     const ins = await getOrCreateSystemAccount(q, 'INSURANCE_FUND');
-    if ((await getBalance(q, coll)) < amountUusdc) throw new HttpError(400, 'insufficient balance');
+    if ((await getBalance(q, fees)) < amountUusdc) throw new HttpError(400, 'fee revenue balance too low');
     await postTxn(q, {
-      reason: 'INSURANCE_DEPOSIT',
+      reason: 'INSURANCE_FROM_FEES',
       entries: [
-        { accountId: coll, amount: -amountUusdc },
+        { accountId: fees, amount: -amountUusdc },
         { accountId: ins, amount: amountUusdc },
       ],
     });
-    return { insuranceUusdc: (await getBalance(q, ins)).toString() };
+    return { insuranceUusdc: (await getBalance(q, ins)).toString(), feeRevenueUusdc: (await getBalance(q, fees)).toString() };
   });
 }
 
-/** Pull from the insurance buffer back to an account's collateral (operator de-fund / rebalance). */
-export async function defundInsurance(db: Db, userId: string, amountUusdc: bigint): Promise<{ insuranceUusdc: string }> {
+/** Reverse of (a): pull from the insurance buffer back to platform fee revenue (operator rebalance). */
+export async function deallocateInsuranceToFees(db: Db, amountUusdc: bigint): Promise<{ insuranceUusdc: string; feeRevenueUusdc: string }> {
   if (amountUusdc <= 0n) throw new HttpError(400, 'amount must be positive');
   return db.tx(async (q) => {
-    const coll = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
+    const fees = await getOrCreateSystemAccount(q, 'FEE_REVENUE');
     const ins = await getOrCreateSystemAccount(q, 'INSURANCE_FUND');
     if ((await getBalance(q, ins)) < amountUusdc) throw new HttpError(400, 'insurance fund balance too low');
     await postTxn(q, {
-      reason: 'INSURANCE_DEFUND',
+      reason: 'INSURANCE_TO_FEES',
       entries: [
         { accountId: ins, amount: -amountUusdc },
-        { accountId: coll, amount: amountUusdc },
+        { accountId: fees, amount: amountUusdc },
+      ],
+    });
+    return { insuranceUusdc: (await getBalance(q, ins)).toString(), feeRevenueUusdc: (await getBalance(q, fees)).toString() };
+  });
+}
+
+/**
+ * (b) Allocate operator-injected treasury surplus into insurance. `availableSurplusUusdc` is the
+ * live on-chain surplus (reserves − liabilities) the caller read from treasuryState — the amount is
+ * capped to it so a misclick can't record insurance that isn't backed by real custody USDC. Records
+ * the claim against TREASURY_USDC (mirroring a deposit), keeping reserves == liabilities afterward.
+ */
+export async function allocateTreasurySurplusToInsurance(
+  db: Db,
+  amountUusdc: bigint,
+  availableSurplusUusdc: bigint,
+): Promise<{ insuranceUusdc: string }> {
+  if (amountUusdc <= 0n) throw new HttpError(400, 'amount must be positive');
+  if (amountUusdc > availableSurplusUusdc) {
+    throw new HttpError(400, `amount exceeds available treasury surplus (${availableSurplusUusdc} uUSDC) — send funds to the treasury first`);
+  }
+  return db.tx(async (q) => {
+    const ins = await getOrCreateSystemAccount(q, 'INSURANCE_FUND');
+    const treasury = await getOrCreateSystemAccount(q, 'TREASURY_USDC');
+    await postTxn(q, {
+      reason: 'INSURANCE_FROM_TREASURY',
+      entries: [
+        { accountId: ins, amount: amountUusdc },
+        { accountId: treasury, amount: -amountUusdc },
       ],
     });
     return { insuranceUusdc: (await getBalance(q, ins)).toString() };

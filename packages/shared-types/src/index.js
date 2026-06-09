@@ -110,9 +110,8 @@ export const SetPriceRequest = z.object({
   note: z.string().max(200).optional(), // audit note (source/why)
 });
 
-// Operator seeds/rebalances the insurance buffer from a funded account's collateral (admin op).
+// Operator allocates house funds (fees or treasury surplus) to/from the insurance buffer (admin op).
 export const InsuranceFundRequest = z.object({
-  userId: z.string().min(1), // the funded account to move collateral to/from
   amountUusdc: MicroStr, // micro-USDC
 });
 
