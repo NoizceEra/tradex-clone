@@ -22,12 +22,20 @@ window.Buffer = window.Buffer || Buffer;
 // eslint-disable-next-line react-refresh/only-export-components
 const RootApp = () => {
   // Play-money MVP runs on devnet. Override with VITE_SOLANA_RPC in prod.
-  const endpoint = import.meta.env.VITE_SOLANA_RPC || clusterApiUrl('devnet');
+  // Default to a reliable public devnet RPC instead of the rate-limited clusterApiUrl
+  const endpoint =
+    import.meta.env.VITE_SOLANA_RPC ||
+    'https://devnet.rpc.ironforge.network/rpc';
+
   const wallets = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter()], []);
+
+  console.log('[Solana] Connecting to RPC endpoint:', endpoint);
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider wallets={wallets} autoConnect onError={(error) => {
+        console.error('[Wallet] Connection error:', error);
+      }}>
         <WalletModalProvider>
           <AuthProvider>
             <ErrorBoundary>
