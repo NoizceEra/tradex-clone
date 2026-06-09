@@ -1,5 +1,6 @@
 import { AuthButton } from './AuthButton';
 import { ThemePicker } from './ThemePicker';
+import { NetworkIndicator } from './NetworkIndicator';
 import { useChat } from '../store/chat';
 
 const NAV = [
@@ -38,6 +39,7 @@ export function Navbar({ activeView, setActiveView, chatOpen, onToggleChat }) {
       </div>
 
       <div className="nav-actions">
+        <NetworkIndicator />
         <ThemePicker />
         <AuthButton />
       </div>
