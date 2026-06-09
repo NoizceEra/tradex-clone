@@ -1,0 +1,9 @@
+.git
+node_modules
+.pglite
+**/.pglite
+.env
+dist
+.turbo
+apps/web/dist
+.vercel

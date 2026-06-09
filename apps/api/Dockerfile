@@ -12,7 +12,7 @@ COPY apps/api/package.json ./apps/api/
 COPY packages/ ./packages/
 
 # Install all deps (workspace-aware)
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # Copy full source
 COPY . .
