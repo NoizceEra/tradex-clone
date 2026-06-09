@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatUsd, formatSignedUsd } from '@pokex/pricing';
+import { formatUsd, formatSignedUsd, formatPct } from '@pokex/pricing';
 import * as api from '../lib/api.js';
 
 export function OpenPositions({ positions, onChanged, onSelect, emptyLabel = 'No open positions.', compact = false }) {
@@ -25,7 +25,7 @@ export function OpenPositions({ positions, onChanged, onSelect, emptyLabel = 'No
           <th>MARKET</th>
           <th>SIDE</th>
           {!compact && <><th>SIZE</th><th>ENTRY</th><th>MARK</th><th>LIQ</th></>}
-          <th>uPnL</th>
+          <th>PNL (ROE%)</th>
           <th />
         </tr>
       </thead>
@@ -34,7 +34,11 @@ export function OpenPositions({ positions, onChanged, onSelect, emptyLabel = 'No
           <tr><td colSpan={compact ? 4 : 8} className="hist-empty">{emptyLabel}</td></tr>
         )}
         {rows.map((p) => {
-          const up = BigInt(p.unrealizedPnlUusdc ?? '0') >= 0n;
+          const pnlE6 = BigInt(p.unrealizedPnlUusdc ?? '0');
+          const marginE6 = BigInt(p.marginUusdc ?? '0');
+          const up = pnlE6 >= 0n;
+          // ROE = PnL ÷ the position's own margin (return on what the trader put up).
+          const roePct = marginE6 > 0n ? (Number(pnlE6) / Number(marginE6)) * 100 : 0;
           return (
             <tr key={p.id}>
               <td className="link" onClick={() => onSelect?.(p.marketId)}>{p.symbol}</td>
@@ -49,7 +53,10 @@ export function OpenPositions({ positions, onChanged, onSelect, emptyLabel = 'No
                   <td className="down">{formatUsd(BigInt(p.liqPriceE6 ?? '0'))}</td>
                 </>
               )}
-              <td className={up ? 'up' : 'down'}>{formatSignedUsd(p.unrealizedPnlUusdc ?? '0')}</td>
+              <td className={up ? 'up' : 'down'}>
+                <div>{formatSignedUsd(p.unrealizedPnlUusdc ?? '0')}</div>
+                <div style={{ fontSize: '0.82em', opacity: 0.85 }}>{formatPct(roePct)}</div>
+              </td>
               <td>
                 <button className="btn-ghost sm" disabled={busy === p.id} onClick={() => close(p)}>
                   {busy === p.id ? '…' : 'Close'}
