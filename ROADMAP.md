@@ -106,7 +106,8 @@ staleness halts, with per-market worst case `≈ (max OI) × (adverse oracle gap
 funding`. Full reports: [`docs/liquidity-hybrid-spec.md`](docs/liquidity-hybrid-spec.md),
 [`docs/liquidity-lmsr-spike.md`](docs/liquidity-lmsr-spike.md).
 
-**Build sequence (no work started):** Phase 1 — pool-health gate + PnL-factor cap; Phase 2 — per-market
-adaptive depth (validate `b(q)` in fixed-point first — Augur dropped LS-LMSR over `exp()` precision);
-Phase 3 — auto-deleverage; Phase 4 (later) — rent house-neutral MMs (C/D). Calibrate the daily-feed
-gap term before sizing per-market OI/leverage caps.
+**Build sequence:** Phase 1 — pool-health gate (MAX_PNL_FACTOR), **✅ done** (off by default); Phase 2 —
+per-market adaptive depth `max(NAV, floor, α·cumVolume)`, **✅ done** (linear curve, no `exp()`, so the
+Augur fixed-point issue doesn't apply); Phase 3 — auto-deleverage (next); Phase 4 (later) — rent
+house-neutral MMs (C/D). Still to calibrate before real-funds launch: the daily-feed gap term, α, and
+per-market OI/leverage caps (all flagged in the spike's open questions).

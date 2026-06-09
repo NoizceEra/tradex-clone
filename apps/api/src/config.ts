@@ -97,6 +97,16 @@ export const config = {
   // See docs/liquidity-hybrid-spec.md §2.
   maxPnlFactorBps: num('MAX_PNL_FACTOR_BPS', 0),
 
+  // B' adaptive market depth (LS-LMSR-inspired, docs/liquidity-hybrid-spec.md §3). The mark premium
+  // is clamp(k·skew/depth, ±cap); depth is per-market = max(LP NAV, depthFloor, α·cumulativeVolume),
+  // so every market starts at the floor and DEEPENS (less price impact) as real volume flows through
+  // it — no operator pre-guessing, no exp() (fixed-point safe, unlike Augur v2's LS-LMSR). Keeping
+  // NAV as a lower bound means depth is never shallower than the old NAV-based depth. The floor also
+  // fixes the thin-pool gotcha (a 0<NAV<skew pool no longer pins the premium to its cap).
+  // Defaults preserve today's fresh-market impact; alpha needs calibration against real volume.
+  depthFloorUusdc: BigInt(num('DEPTH_FLOOR_UUSDC', 1_000_000_000_000)), // $1M zero-volume depth
+  depthAlphaE6: BigInt(num('DEPTH_ALPHA_E6', 1_000_000)), // α = 1.0 → depth gains 1 uusdc per uusdc of cumulative volume
+
   // --- Real-funds custody (P0 scaffolding; unused until the REAL_FUNDS paths land) ---
   // See docs/real-funds-custody-plan.md. Env-only; keys/seeds are never hardcoded — the HD master
   // seed lives in KMS and only its reference is configured here.

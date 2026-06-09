@@ -125,9 +125,16 @@ The useful, portable idea is LS-LMSR's **liquidity-sensitive depth**: `b(q) = α
 That maps **directly** onto our existing `depth` term:
 
 ```
-// today:   depth = max(LP free capital, $1M fixed floor)        // global, crude
-// B′:      depth_m = max(α · cumulativeVolume_m, floor_m)        // per-market, self-deepening
+// before:  depth = NAV > 0 ? NAV : $1M floor                    // global, NAV-or-floor (gotcha)
+// B′:      depth_m = max(NAV, floor, α · cumulativeVolume_m)     // per-market, self-deepening
 ```
+
+> **IMPLEMENTED (Phase 2).** `marketDepth()` in `engine.ts` now returns `max(NAV, depthFloorUusdc,
+> α·cumulativeVolume_m)`, fed into `refreshMark`. NAV is kept as a lower bound so depth is **never
+> shallower than the old behavior** (no market gets more volatile), the floor fixes the thin-pool
+> gotcha, and a per-market `markets.cumulative_volume_uusdc` counter (bumped via `insertFill` on every
+> open/close/liquidation) makes each market deepen with its own flow. Config: `DEPTH_FLOOR_UUSDC`
+> ($1M), `DEPTH_ALPHA_E6` (1.0). See `adaptive-depth.test.ts`.
 
 - Replaces the one-size-fits-all $1M floor with a **per-market** depth that starts small and **deepens
   as real volume flows in** — exactly the "launch from near-zero, auto-scale" property we wanted.
@@ -140,10 +147,10 @@ That maps **directly** onto our existing `depth` term:
 **Effort:** small–moderate. Needs a per-market `cumulative volume` counter (we already sum OI/notional
 in `oi.ts`), an `α` and per-market `floor`, and swapping the depth source in `refreshMark`/`marks.ts`.
 
-> **⚠️ Implementation caveat (from the spike):** Augur removed LS-LMSR in v2 citing fixed-point `exp()`
-> precision issues. Our marks use BigInt micro-USDC math (`packages/pricing`), so validate the `b(q)`
-> curve is numerically stable at real-USDC precision before relying on it — or use a simpler monotone
-> volume→depth curve that captures the "deepen with volume" property without `exp()`.
+> **⚠️ Implementation caveat (from the spike) — RESOLVED.** Augur removed LS-LMSR in v2 citing
+> fixed-point `exp()` precision issues. We sidestepped that entirely: depth is a **linear** function of
+> cumulative volume (`α·Σvolume`), all BigInt micro-USDC, **no `exp()`** — so the precision class that
+> bit Augur doesn't apply. (A future decaying/windowed volume term, if wanted, must keep this property.)
 
 ---
 
@@ -175,12 +182,13 @@ all of which lean on A, not B:
 
 ## 6. Recommended build sequence
 
-1. **Phase 1 — A's caps (do first; small, high-value).** Pool-health gate on opens + PnL-factor cap.
-   This is the piece that actually makes an underfunded pool safe and is independent of B. Ship with
-   the full QA + `/simplify` cycle.
-2. **Phase 2 — B′ adaptive per-market depth.** Swap the fixed floor for `max(α·volume, floor_m)` per
-   market + per-market OI caps + thin-market margin/leverage tuning.
-3. **Phase 3 — ADL.** Add the auto-deleverage sweep branch as the backstop for Phase 1's caps.
+1. **Phase 1 — A's caps. ✅ DONE.** Pool-health gate on opens (GMX-style MAX_PNL_FACTOR), off by
+   default. `engine.ts` `poolPnlLiability` + gate, `pool-risk.test.ts`.
+2. **Phase 2 — B′ adaptive per-market depth. ✅ DONE.** `depth = max(NAV, floor, α·cumulativeVolume)`,
+   per-market volume counter via `insertFill`, no `exp()`. `adaptive-depth.test.ts`. *(Still open:
+   per-market OI caps + thin-market margin/leverage tuning — fold into calibration, see §7.)*
+3. **Phase 3 — ADL.** Add the auto-deleverage sweep branch as the backstop for Phase 1's caps. Route
+   its fills through `insertFill` (so volume is recorded automatically).
 4. **Phase 4 (optional, later) — C/D.** Designated-MM rewards / JIT auction to rent house-neutral
    liquidity once volume justifies paying makers.
 

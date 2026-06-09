@@ -143,6 +143,43 @@ async function lpDepth(q: Queryer): Promise<bigint> {
 }
 
 /**
+ * B' adaptive price-impact depth for one market (docs/liquidity-hybrid-spec.md §3):
+ *   depth = max(LP NAV, depthFloor, α · cumulativeVolume)
+ * Per-market and self-deepening — a market starts at the floor and grows less price-sensitive as
+ * real volume flows through it. NAV is kept as a lower bound so depth is never shallower than the
+ * old NAV-based depth, and the floor stops a thin (0<NAV<skew) pool pinning the premium to its cap.
+ * Integer-only, no exp() (fixed-point safe). Reads the market's freshly-bumped volume counter.
+ */
+async function marketDepth(q: Queryer, marketId: string): Promise<bigint> {
+  const r = await q.query<{ v: string }>(`SELECT cumulative_volume_uusdc::text AS v FROM markets WHERE id=$1`, [marketId]);
+  const volDepth = (config.depthAlphaE6 * BigInt(r.rows[0]?.v ?? '0')) / 1_000_000n;
+  const floored = volDepth > config.depthFloorUusdc ? volDepth : config.depthFloorUusdc;
+  const nav = await lpDepth(q);
+  return nav > floored ? nav : floored; // depth = max(NAV, floor, α·cumulativeVolume)
+}
+
+/**
+ * The single seam every fill writer goes through: persist the fill row AND credit the market's
+ * cumulative traded volume with the fill's notional (qty × exec price). Routing all of open /
+ * increase / close / liquidation (and future ADL) through here keeps volume from ever desyncing
+ * from the fills ledger and means a new fill path can't forget to record its volume.
+ */
+async function insertFill(
+  q: Queryer,
+  f: { orderId: string; positionId: string; marketId: string; execPriceE6: bigint; qtyE6: bigint; feeUusdc: bigint; realizedPnlUusdc: bigint },
+): Promise<void> {
+  await q.query(
+    `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [randomUUID(), f.orderId, f.positionId, f.marketId, f.execPriceE6.toString(), f.qtyE6.toString(), f.feeUusdc.toString(), f.realizedPnlUusdc.toString()],
+  );
+  const vol = notional(f.qtyE6, f.execPriceE6);
+  if (vol > 0n) {
+    await q.query(`UPDATE markets SET cumulative_volume_uusdc = cumulative_volume_uusdc + $1 WHERE id=$2`, [vol.toString(), f.marketId]);
+  }
+}
+
+/**
  * The pool's net liability to traders if every open position closed at the current mark right now:
  * winners' unrealized profit is owed in full; losers' losses count only up to their margin, since
  * isolated margin means the pool can't collect beyond it. This is the figure the MAX_PNL_FACTOR
@@ -179,7 +216,7 @@ export async function refreshMark(q: Queryer, market: MarketRow, indexE6: bigint
     else shortQ = BigInt(row.q);
   }
   const skewUusdc = ((longQ - shortQ) * indexE6) / 1_000_000n;
-  const markE6 = await recomputeMark(q, market, indexE6, skewUusdc, await lpDepth(q));
+  const markE6 = await recomputeMark(q, market, indexE6, skewUusdc, await marketDepth(q, market.id));
   publish(`oi:${market.id}`, 'oi', {
     marketId: market.id,
     longUusdc: ((longQ * indexE6) / 1_000_000n).toString(),
@@ -314,11 +351,7 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
         );
       }
 
-      await q.query(
-        `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
-         VALUES($1,$2,$3,$4,$5,$6,$7,0)`,
-        [randomUUID(), orderId, positionId, market.id, markE6.toString(), input.qtyE6.toString(), openFee.toString()],
-      );
+      await insertFill(q, { orderId, positionId, marketId: market.id, execPriceE6: markE6, qtyE6: input.qtyE6, feeUusdc: openFee, realizedPnlUusdc: 0n });
 
       await refreshMarketState(q, market, indexE6);
       publish(`positions:${userId}`, 'update', { marketId: market.id });
@@ -414,11 +447,7 @@ export async function closePosition(db: Db, userId: string, input: CloseInput): 
       }
 
       // fills references the orderId anchored at the top of the tx (guaranteed inserted)
-      await q.query(
-        `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [randomUUID(), orderId, pos.id, market.id, markE6.toString(), closeQty.toString(), closeFeeAmt.toString(), pnl.toString()],
-      );
+      await insertFill(q, { orderId, positionId: pos.id, marketId: market.id, execPriceE6: markE6, qtyE6: closeQty, feeUusdc: closeFeeAmt, realizedPnlUusdc: pnl });
 
       await refreshMarketState(q, market, indexE6);
       publish(`positions:${userId}`, 'update', { marketId: market.id });
@@ -570,11 +599,7 @@ async function liquidatePositionInTx(q: Queryer, pos: PositionRow, market: Marke
      VALUES($1,$2,$3,$4,'reduce_only',$5,$6,$7,'filled')`,
     [orderId, pos.user_id, market.id, 'liq-' + pos.id + '-' + randomUUID(), pos.side, qty.toString(), pos.leverage_e2],
   );
-  await q.query(
-    `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-    [randomUUID(), orderId, pos.id, market.id, markE6.toString(), qty.toString(), liqFeeTaken.toString(), pnl.toString()],
-  );
+  await insertFill(q, { orderId, positionId: pos.id, marketId: market.id, execPriceE6: markE6, qtyE6: qty, feeUusdc: liqFeeTaken, realizedPnlUusdc: pnl });
   await q.query(
     `INSERT INTO liquidations(id,position_id,market_id,user_id,trigger_mark_e6,closed_qty_e6,liquidation_fee_uusdc,bad_debt_uusdc,insurance_drawn_uusdc,socialized_uusdc)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
