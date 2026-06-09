@@ -680,6 +680,8 @@ async function adlClosePositionInTx(q: Queryer, pos: PositionRow, market: Market
   await insertFill(q, { orderId, positionId: pos.id, marketId: market.id, execPriceE6: markE6, qtyE6: qty, feeUusdc: 0n, realizedPnlUusdc: pnl });
   await refreshMarketState(q, market, indexE6);
   publish(`positions:${pos.user_id}`, 'deleveraged', { positionId: pos.id, markE6: markE6.toString(), pnlUusdc: pnl.toString() });
+  // notify channel (Toasts subscribes here, same as liquidation) — ADL force-closed a winner
+  publish(`liquidations:${pos.user_id}`, 'deleveraged', { positionId: pos.id, marketId: market.id, pnlUusdc: pnl.toString() });
   return true;
 }
 
