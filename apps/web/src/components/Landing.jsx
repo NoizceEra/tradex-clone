@@ -14,10 +14,14 @@ const STEPS = [
 ];
 
 const FEATURES = [
-  ['◆', 'EVERY MARKET LIVE', 'Trade any card from day one. Our liquidity engine seeds every market, so you never wait for someone to take the other side.'],
-  ['▲▼', 'LONG OR SHORT', 'Win when prices pump or dump. Pick a side on any Pokémon card, set, or index.'],
-  ['◉', 'REAL USDC, ON-CHAIN', 'Deposit and withdraw real USDC on Solana. Funds are custodied transparently with on-chain proof-of-reserves.'],
-  ['✕', 'UP TO 20× LEVERAGE', 'Isolated-margin leverage — amplify your conviction while capping the downside to your margin.'],
+  ['🎴', 'EVERY MARKET LIVE', 'Trade any card from day one. Our liquidity engine seeds every market, so you never wait for someone to take the other side.'],
+  ['📈', 'LONG OR SHORT', 'Win when prices pump or dump. Pick a side on any card, set, or index.'],
+  ['⚡', 'INSTANT EXECUTION', 'Lightning-fast order execution, settled on Solana.'],
+  ['📊', 'REAL-TIME PRICES', 'Live prices and market data on every card, at your fingertips.'],
+  ['💵', 'REAL USDC, ON-CHAIN', 'Deposit and withdraw real USDC on Solana — custodied transparently with on-chain proof-of-reserves.'],
+  ['🚀', 'UP TO 20× LEVERAGE', 'Isolated-margin leverage — amplify your conviction while capping the downside to your margin.'],
+  ['🏆', 'LEADERBOARD', 'Compete with other traders and climb the rankings.'],
+  ['🌍', 'MULTI-UNIVERSE', 'Pokémon now — One Piece, Magic & more collectible universes incoming.'],
 ];
 
 const FAQ = [
@@ -136,7 +140,7 @@ export function Landing({ onEnter }) {
 
       {/* FEATURES */}
       <section className="lp-section lp-section-alt" id="why">
-        <h2 className="lp-h2">BUILT FOR DEGENS &amp; COLLECTORS</h2>
+        <h2 className="lp-h2">BUILT FOR SPECULATORS &amp; COLLECTORS</h2>
         <div className="lp-features">
           {FEATURES.map(([icon, title, body]) => (
             <div className="lp-feature" key={title}>
