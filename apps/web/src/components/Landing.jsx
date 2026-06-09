@@ -79,19 +79,35 @@ export function Landing({ onEnter }) {
           <div className="lp-trust">NO SIGN-UP · YOUR KEYS · LONG OR SHORT</div>
         </div>
 
-        <div className="lp-screen" aria-hidden="true">
-          <div className="lp-screen-bezel">
-            <div className="lp-screen-glass">
-              <svg viewBox="0 0 220 130" preserveAspectRatio="none" className="lp-chart">
-                <polyline points="0,96 28,88 28,70 56,70 56,100 84,100 84,58 112,58 112,76 140,76 140,40 168,40 168,52 196,52 196,22 220,22"
-                  fill="none" stroke="var(--success)" strokeWidth="3" />
-                <polygon points="0,96 28,88 28,70 56,70 56,100 84,100 84,58 112,58 112,76 140,76 140,40 168,40 168,52 196,52 196,22 220,22 220,130 0,130"
-                  fill="var(--success)" opacity="0.12" />
-              </svg>
-              <div className="lp-screen-tag">CHARIZARD ▲ +312%</div>
-            </div>
+        <div className="lp-hero-art">
+          {/* the cards the chart tracks — fanned behind the arcade screen */}
+          <div className="lp-card lp-card-a">
+            <img src="https://images.pokemontcg.io/base1/2.png" alt="Blastoise card" loading="lazy" />
+            <span className="lp-card-badge down">▼ 6%</span>
           </div>
-          <div className="lp-cabinet-base" />
+          <div className="lp-card lp-card-c">
+            <img src="https://images.pokemontcg.io/base1/15.png" alt="Venusaur card" loading="lazy" />
+            <span className="lp-card-badge up">▲ 48%</span>
+          </div>
+          <div className="lp-card lp-card-b">
+            <img src="https://images.pokemontcg.io/base1/4.png" alt="Charizard card" loading="lazy" />
+            <span className="lp-card-badge up">▲ 312%</span>
+          </div>
+
+          <div className="lp-screen" aria-hidden="true">
+            <div className="lp-screen-bezel">
+              <div className="lp-screen-glass">
+                <svg viewBox="0 0 220 130" preserveAspectRatio="none" className="lp-chart">
+                  <polyline points="0,96 28,88 28,70 56,70 56,100 84,100 84,58 112,58 112,76 140,76 140,40 168,40 168,52 196,52 196,22 220,22"
+                    fill="none" stroke="var(--success)" strokeWidth="3" />
+                  <polygon points="0,96 28,88 28,70 56,70 56,100 84,100 84,58 112,58 112,76 140,76 140,40 168,40 168,52 196,52 196,22 220,22 220,130 0,130"
+                    fill="var(--success)" opacity="0.12" />
+                </svg>
+                <div className="lp-screen-tag">CHARIZARD ▲ +312%</div>
+              </div>
+            </div>
+            <div className="lp-cabinet-base" />
+          </div>
         </div>
       </section>
 
