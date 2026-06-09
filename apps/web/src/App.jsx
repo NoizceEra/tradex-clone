@@ -21,14 +21,14 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState('trade');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [chatOpen, setChatOpen] = useState(() => localStorage.getItem('pokeX_chat_open') !== '0');
+  const [chatOpen, setChatOpen] = useState(() => localStorage.getItem('gachadex_chat_open') !== '0');
   const startRealtime = useRealtime((s) => s.start);
   const startChat = useChat((s) => s.start);
 
   const toggleChat = () =>
     setChatOpen((o) => {
       const next = !o;
-      localStorage.setItem('pokeX_chat_open', next ? '1' : '0');
+      localStorage.setItem('gachadex_chat_open', next ? '1' : '0');
       return next;
     });
 

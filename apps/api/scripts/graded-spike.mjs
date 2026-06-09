@@ -86,7 +86,7 @@ async function attempt(url) {
   const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, {
-      headers: { 'X-API-Key': API_KEY, Accept: 'application/json', 'User-Agent': 'pokex-spike/1.0' },
+      headers: { 'X-API-Key': API_KEY, Accept: 'application/json', 'User-Agent': 'gachadex-spike/1.0' },
       signal: ctrl.signal,
     });
     const text = await res.text();

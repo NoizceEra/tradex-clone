@@ -1,4 +1,4 @@
--- PokeX schema. Money is BIGINT micro-USDC (1 USDC = 1_000_000). Prices/values are
+-- GachaDex schema. Money is BIGINT micro-USDC (1 USDC = 1_000_000). Prices/values are
 -- BIGINT micro-USD ("*_e6"). Quantities are BIGINT scale-1e6 ("qty_e6"). No floats.
 -- IDs are app-generated UUID text (crypto.randomUUID) to avoid extension deps.
 -- Idempotent: safe to run repeatedly (CREATE ... IF NOT EXISTS).

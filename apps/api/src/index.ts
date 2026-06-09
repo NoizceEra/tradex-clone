@@ -122,7 +122,7 @@ async function main() {
 
   try {
     await app.listen({ port: config.port, host: config.host });
-    app.log.info(`PokeX api listening on :${config.port} (REAL_FUNDS=${config.realFunds})`);
+    app.log.info(`GachaDex api listening on :${config.port} (REAL_FUNDS=${config.realFunds})`);
     startOracleLoop(db, app.log);
     startFundingLoop(db, app.log);
     startLiquidationLoop(db, app.log);

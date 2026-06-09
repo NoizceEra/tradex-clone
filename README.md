@@ -1,4 +1,4 @@
-# PokeX
+# GachaDex
 
 A **leveraged perpetual-futures exchange on Pokémon-card prices**, settled in USDC. Trade
 perps on individual cards **and** on basket **indices** (Top 100 / Top 250, with Graded and
@@ -176,7 +176,7 @@ deliver the caller's own data.
 ### Monorepo layout
 
 ```
-pokex/                      (pnpm workspaces + Turborepo)
+gachadex/                   (pnpm workspaces + Turborepo)
   apps/web                  React 19 + Vite SPA — Vercel (retro "Press Start 2P" theme)
   apps/api                  Fastify + WebSocket backend: ledger, engine, oracle, liquidations
   packages/pricing          Shared money math (price/PnL/margin/liq/mark) — FE previews must equal the engine

@@ -1018,7 +1018,7 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
   50%       { transform: scaleY(2); opacity: 1; }
 }
 
-/* ===== PokeX perps MVP additions ===== */
+/* ===== GachaDex perps MVP additions ===== */
 .btn-ghost {
   background: var(--bg-3); border: 1px solid var(--border); color: var(--text);
   font-family: var(--font-base); font-size: 0.5rem; padding: 0.45rem 0.6rem;

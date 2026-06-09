@@ -22,10 +22,10 @@ const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
 export function buildLoginMessage(pubkey: string, nonce: string): string {
   return [
-    'PokeX wants you to sign in with your Solana account:',
+    'GachaDex wants you to sign in with your Solana account:',
     pubkey,
     '',
-    'Statement: Authenticate to PokeX. This signature does not authorize any transaction or transfer of funds.',
+    'Statement: Authenticate to GachaDex. This signature does not authorize any transaction or transfer of funds.',
     `Domain: ${config.authDomain}`,
     `Nonce: ${nonce}`,
   ].join('\n');
@@ -38,7 +38,7 @@ export function buildLoginMessage(pubkey: string, nonce: string): string {
  */
 export function buildWithdrawalMessage(pubkey: string, p: { amountE6: bigint; dest: string; nonce: string }): string {
   return [
-    'PokeX withdrawal authorization:',
+    'GachaDex withdrawal authorization:',
     pubkey,
     '',
     `Authorize a withdrawal of ${fmtUusdc(p.amountE6)} USDC to:`,

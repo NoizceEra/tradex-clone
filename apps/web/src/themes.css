@@ -1,5 +1,5 @@
 /* ===========================================================================
- * PokeX skins — selectable theme system.
+ * GachaDex skins — selectable theme system.
  * `data-theme` lives on <html> (set in main.jsx + theme store). Each skin
  * overrides the existing colour tokens (so the whole app reskins) plus two font
  * roles (--font-base for body/controls, --font-display for headings) and the

@@ -19,7 +19,7 @@ export function TradingView({ market }) {
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
   const [tf, setTf] = useState('1M');
-  const [panelHeight, setPanelHeight] = useState(() => clampPanel(Number(localStorage.getItem('pokeX_panel_h')) || 210));
+  const [panelHeight, setPanelHeight] = useState(() => clampPanel(Number(localStorage.getItem('gachadex_panel_h')) || 210));
   const [dragging, setDragging] = useState(false);
 
   const marks = useRealtime((s) => s.marks);
@@ -102,7 +102,7 @@ export function TradingView({ market }) {
 
   // persist the panel height + re-clamp it if the window shrinks
   useEffect(() => {
-    localStorage.setItem('pokeX_panel_h', String(panelHeight));
+    localStorage.setItem('gachadex_panel_h', String(panelHeight));
   }, [panelHeight]);
   useEffect(() => {
     const onResize = () => setPanelHeight((h) => clampPanel(h));
@@ -148,7 +148,7 @@ export function TradingView({ market }) {
           )}
           <div className="card-header-meta">
             <div className="card-header-name">{market?.displayName ?? 'Select a market'}</div>
-            <div className="card-header-set">{market ? (market.kind === 'index' ? 'PokeX Index' : market.symbol) : ''}</div>
+            <div className="card-header-set">{market ? (market.kind === 'index' ? 'GachaDex Index' : market.symbol) : ''}</div>
           </div>
         </div>
 

@@ -1,8 +1,8 @@
 {
-  "name": "pokex",
+  "name": "gachadex",
   "private": true,
   "version": "0.1.0",
-  "description": "PokeX — leveraged perpetual-futures exchange on Pokémon-card prices (play-money MVP)",
+  "description": "GachaDex — leveraged perpetual-futures exchange on Pokémon-card prices (play-money MVP)",
   "packageManager": "pnpm@11.0.9",
   "engines": {
     "node": ">=20"

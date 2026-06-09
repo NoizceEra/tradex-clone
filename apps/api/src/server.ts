@@ -69,7 +69,7 @@ export async function buildServer(opts: BuildServerOpts = {}): Promise<FastifyIn
 
   app.get('/health', async () => ({
     ok: true,
-    service: 'pokex-api',
+    service: 'gachadex-api',
     env: config.env,
     realFunds: config.realFunds,
     time: new Date().toISOString(),

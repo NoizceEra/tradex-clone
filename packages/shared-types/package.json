@@ -1,7 +1,7 @@
 {
   "name": "@pokex/shared-types",
   "version": "0.1.0",
-  "description": "Shared zod schemas + types for the PokeX API and WebSocket contracts",
+  "description": "Shared zod schemas + types for the GachaDex API and WebSocket contracts",
   "type": "module",
   "main": "src/index.js",
   "exports": {

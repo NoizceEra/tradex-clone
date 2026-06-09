@@ -14,7 +14,7 @@ Validated against live comps:
 - **Axiom / Padre:** non-custodial **Turnkey** embedded wallets; Axiom routes perps to Hyperliquid (external venue). Not our case — we *are* the venue.
 - **AsterDEX:** on-chain perps DEX (contracts + audits) with email→embedded-wallet onboarding. The "go fully non-custodial" alternative — heavier; deferred.
 
-**Takeaway:** replicate CollectorRoll — free Solana libraries, server-side, no wallet vendor. The hard part is **securing the server-held keys + the custodial obligations** (treasury security, AML/KYC, proof-of-reserves). PokeX is synthetic price perps → settlement is **USDC-out only** (no card/NFT delivery), simpler than CollectorRoll.
+**Takeaway:** replicate CollectorRoll — free Solana libraries, server-side, no wallet vendor. The hard part is **securing the server-held keys + the custodial obligations** (treasury security, AML/KYC, proof-of-reserves). GachaDex is synthetic price perps → settlement is **USDC-out only** (no card/NFT delivery), simpler than CollectorRoll.
 
 ---
 

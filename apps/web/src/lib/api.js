@@ -1,4 +1,4 @@
-// Typed-ish REST client for the PokeX API. Access token lives in memory; the refresh
+// Typed-ish REST client for the GachaDex API. Access token lives in memory; the refresh
 // token in localStorage. On a 401 we transparently refresh once and retry.
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
