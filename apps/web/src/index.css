@@ -83,6 +83,14 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
 
 .nav-links { display: flex; gap: 1.5rem; }
 .nav-actions { display: flex; align-items: center; gap: 0.6rem; }
+/* X / social icon button — matches the landing's social icons (sharp, muted, gold on hover) */
+.nav-social-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; color: var(--text-muted);
+  border: var(--border-w) solid var(--border); transition: color 0.12s, border-color 0.12s;
+}
+.nav-social-link svg { width: 15px; height: 15px; }
+.nav-social-link:hover { color: var(--gold); border-color: var(--gold); }
 
 .nav-link {
   background: none;
