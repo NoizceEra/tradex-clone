@@ -7,10 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      react-router-dom:
-        specifier: ^7.17.0
-        version: 7.17.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
     devDependencies:
       turbo:
         specifier: ^2.3.3
@@ -3934,28 +3930,11 @@ packages:
       react: '>=16.8'
       react-dom: '>=16.8'
 
-  react-router-dom@7.17.0:
-    resolution: {integrity: sha512-fyU2yjGups/hE6Xz0I5ZYbVL8Gx29eCjgpHaRaTaVU+OOAdfRX05KsvyRm0GO8YQwOkhpU3MurW1jyMUJn+zSw==}
-    engines: {node: '>=20.0.0'}
-    peerDependencies:
-      react: '>=18'
-      react-dom: '>=18'
-
   react-router@6.30.4:
     resolution: {integrity: sha512-SVUsDe+DybHM/WmYKIVYhZh1o5Dcuf16yM6WjG02Q9XVFMZIJyHYhwrr6bFBXZkVP6z69kNkMyBCujt8FaFLJA==}
     engines: {node: '>=14.0.0'}
     peerDependencies:
       react: '>=16.8'
-
-  react-router@7.17.0:
-    resolution: {integrity: sha512-FDELK7rTMlCHO5+reyXsPlmfr7N1F91lPHsWYfMEGQm/KQ+F4JFM8jGoeQDmDvdTs93Fw9aSilH+uKRb4/jXvQ==}
-    engines: {node: '>=20.0.0'}
-    peerDependencies:
-      react: '>=18'
-      react-dom: '>=18'
-    peerDependenciesMeta:
-      react-dom:
-        optional: true
 
   react@19.2.7:
     resolution: {integrity: sha512-HNe9WslTbXmFK8o8cmwgAeJFSBvt1bPdHCVKtaaV+WlAN36mpT4hcRpwbf3fY56ar2oIXzsBpOAiIRHAdY0OlQ==}
@@ -9982,24 +9961,10 @@ snapshots:
       react-dom: 19.2.7(react@19.2.7)
       react-router: 6.30.4(react@19.2.7)
 
-  react-router-dom@7.17.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
-    dependencies:
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
-      react-router: 7.17.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
-
   react-router@6.30.4(react@19.2.7):
     dependencies:
       '@remix-run/router': 1.23.3
       react: 19.2.7
-
-  react-router@7.17.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
-    dependencies:
-      cookie: 1.1.1
-      react: 19.2.7
-      set-cookie-parser: 2.7.2
-    optionalDependencies:
-      react-dom: 19.2.7(react@19.2.7)
 
   react@19.2.7: {}
 

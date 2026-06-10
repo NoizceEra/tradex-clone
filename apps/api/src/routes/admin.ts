@@ -18,6 +18,9 @@ import {
   withdrawalsFrozen,
   type TreasuryChain,
 } from '../services/custody/treasury.ts';
+import { InsuranceFundRequest, CustodyLimitsRequest } from '@pokex/shared-types';
+import { allocateTreasurySurplusToInsurance } from '../services/insurance.ts';
+import { limitsView, setLimits } from '../services/custody/limits.ts';
 
 /**
  * Operator endpoints (custody P2/P3 — see docs/ops-runbook.md). Registered ONLY when REAL_FUNDS
@@ -35,7 +38,7 @@ export interface AdminChains {
 
 // async on purpose: Fastify resolves arity-2 hooks by their returned promise — a plain function
 // returning undefined on the success path would leave the request hanging forever.
-async function requireAdminKey(req: FastifyRequest, reply: FastifyReply): Promise<void> {
+export async function requireAdminKey(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   const given = req.headers['x-admin-key'];
   const expected = Buffer.from(config.adminApiKey);
   const got = Buffer.from(typeof given === 'string' ? given : '');
@@ -98,9 +101,30 @@ export function adminRoutes(chains: AdminChains) {
         onchainE6: s.onchainE6.toString(),
         pendingE6: s.pendingE6.toString(),
         shortfallE6: s.shortfallE6.toString(),
+        insuranceE6: s.insuranceE6.toString(),
+        surplusE6: s.surplusE6.toString(), // allocatable to insurance (onchain − liabilities)
         breached: s.breached,
         frozen: s.frozen,
       };
+    });
+
+    // Allocate operator-injected treasury surplus into the insurance buffer. Capped at the LIVE
+    // on-chain surplus (so you can't allocate USDC you haven't actually sent to the treasury). The
+    // surplus is a snapshot — a withdrawal racing this admin call could leave a transient PoR
+    // shortfall, which the next treasuryPass detects and auto-freezes (the same backstop deposits use).
+    app.post('/admin/insurance/from-treasury', rl(config.routeRateLimits.admin), async (req) => {
+      const { amountUusdc } = InsuranceFundRequest.parse(req.body);
+      const s = await treasuryState(await getDb(), chains.treasuryChain);
+      return allocateTreasurySurplusToInsurance(await getDb(), BigInt(amountUusdc), s.surplusE6 > 0n ? s.surplusE6 : 0n);
+    });
+
+    // Live-tunable custody limits (hot-wallet cap, withdrawal caps, min amounts, swap slippage).
+    // GET returns the effective values + the config defaults; POST upserts overrides into `settings`.
+    app.get('/admin/custody-limits', rl(config.routeRateLimits.admin), async () => limitsView());
+    app.post('/admin/custody-limits', rl(config.routeRateLimits.admin), async (req) => {
+      const body = CustodyLimitsRequest.parse(req.body);
+      const current = await setLimits(await getDb(), body);
+      return { current };
     });
   };
 }

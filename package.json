@@ -2,7 +2,7 @@
   "name": "gachadex",
   "private": true,
   "version": "0.1.0",
-  "description": "GachaDex — leveraged perpetual-futures exchange on Pokémon-card prices (play-money MVP)",
+  "description": "GachaDex — leveraged perpetual-futures exchange on TCG card prices",
   "packageManager": "pnpm@11.0.9",
   "engines": {
     "node": ">=20"
@@ -17,8 +17,5 @@
   },
   "devDependencies": {
     "turbo": "^2.3.3"
-  },
-  "dependencies": {
-    "react-router-dom": "^7.17.0"
   }
 }

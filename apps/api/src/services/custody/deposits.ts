@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Keypair } from '@solana/web3.js';
-import { config } from '../../config.ts';
+import { getLimits } from './limits.ts';
 import type { Db } from '../../db/client.ts';
 import { getOrCreateSystemAccount, getOrCreateUserAccount, postTxn } from '../ledger.ts';
 import { usdc } from '../../money.ts';
@@ -82,7 +82,7 @@ export interface DepositChain {
   sweepAll(from: Keypair): Promise<SweepResult | null>;
 }
 
-const minDepositE6 = (): bigint => usdc(config.minDepositUsd);
+const minDepositE6 = (): bigint => usdc(getLimits().minDepositUsd);
 
 /** Kept back from every SOL swap: the swap tx fee + wSOL/ATA rent headroom (0.01 SOL). The
  *  residue stays on the deposit address; an ops sweep can reclaim it later. */

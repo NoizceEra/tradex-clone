@@ -44,7 +44,7 @@ export function Leaderboard() {
   return (
     <div className="page leaderboard">
       <h2>Leaderboard</h2>
-      <p className="lb-sub">Top traders by net realized PnL — booked profit from closed positions (fees &amp; funding included). Play-money.</p>
+      <p className="lb-sub">Top traders by net realized PnL — booked profit from closed positions (fees &amp; funding included).</p>
 
       {error && <div className="order-error">{error}</div>}
 

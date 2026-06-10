@@ -10,7 +10,6 @@ document.documentElement.setAttribute('data-theme', initialSkin());
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
-import { clusterApiUrl } from '@solana/web3.js';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 import { Buffer } from 'buffer';
@@ -20,8 +19,11 @@ window.Buffer = window.Buffer || Buffer;
 
 // eslint-disable-next-line react-refresh/only-export-components
 const RootApp = () => {
-  // Play-money MVP runs on mainnet RPC by default so users don't need Devnet enabled in Phantom to sign in.
-  const endpoint = import.meta.env.VITE_SOLANA_RPC || clusterApiUrl('mainnet-beta');
+  // Mainnet. Override with VITE_SOLANA_RPC (apps/web/.env) — the public endpoint is heavily
+  // rate-limited, so use a dedicated provider (Helius / QuickNode / Triton) in prod.
+  const endpoint =
+    import.meta.env.VITE_SOLANA_RPC ||
+    'https://api.mainnet-beta.solana.com';
 
   const wallets = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter()], []);
 

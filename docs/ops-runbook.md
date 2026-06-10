@@ -76,6 +76,48 @@ While frozen: new withdrawal requests and new payout signings return 503; deposi
 recovery of already-signed payouts proceeds (those debits are final and re-broadcast is
 idempotent).
 
+## Insurance fund
+
+Absorbs liquidation bad debt before it reaches LPs. It fills automatically from the 1% liquidation
+penalty; you can also top it up from house money.
+
+```bash
+# current insurance balance
+curl -s -H "$AUTH" "$API/admin/insurance" | jq
+
+# allocate accumulated platform fees -> insurance (amounts are micro-USDC; 500000000 = 500 USDC)
+curl -s -X POST -H "$AUTH" -H 'content-type: application/json' \
+  -d '{"amountUusdc":"500000000"}' "$API/admin/insurance/from-fees" | jq
+curl -s -X POST -H "$AUTH" -H 'content-type: application/json' \
+  -d '{"amountUusdc":"500000000"}' "$API/admin/insurance/to-fees" | jq
+
+# allocate treasury surplus (USDC sent to the treasury, above liabilities) -> insurance
+curl -s -X POST -H "$AUTH" -H 'content-type: application/json' \
+  -d '{"amountUusdc":"1000000000"}' "$API/admin/insurance/from-treasury" | jq
+```
+
+`from-treasury` is capped at the LIVE on-chain surplus — you can't allocate USDC you haven't actually
+sent to the treasury wallet. All of these are also in the admin panel.
+
+## Custody limits
+
+Hot-wallet cap, withdrawal caps, minimums, and swap slippage are tunable **live** (no redeploy);
+overrides persist in the `settings` table and overlay the env/`config.ts` defaults.
+
+```bash
+# current effective values + the config defaults
+curl -s -H "$AUTH" "$API/admin/custody-limits" | jq
+
+# update any subset (USD as plain dollars; swapSlippageBps as bps). Omitted keys are unchanged.
+curl -s -X POST -H "$AUTH" -H 'content-type: application/json' \
+  -d '{"hotWalletMaxUsd":50000,"withdrawalDailyCapUsd":25000,"swapSlippageBps":75}' \
+  "$API/admin/custody-limits" | jq
+```
+
+Keys: `hotWalletMaxUsd`, `withdrawalDailyCapUsd`, `withdrawalAutoApproveMaxUsd`, `minWithdrawalUsd`,
+`minDepositUsd`, `minSweepUsd`, `swapSlippageBps`. The admin panel exposes the same fields. A change
+applies on the next worker pass / request and propagates to other API instances within ~30s.
+
 ## What can go wrong
 
 | Symptom | Meaning | Action |

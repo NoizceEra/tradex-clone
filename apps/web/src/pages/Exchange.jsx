@@ -7,13 +7,10 @@ import { Marketplace } from '../components/Marketplace';
 import { Portfolio } from '../components/Portfolio';
 import { PoolView } from '../components/PoolView';
 import { Leaderboard } from '../components/Leaderboard';
+import { AdminPanel } from '../components/AdminPanel';
 import { ChatSidebar } from '../components/ChatSidebar';
 import { Toasts } from '../components/Toasts';
-import { useRealtime } from '../store/realtime';
-import { useChat } from '../store/chat';
 import * as api from '../lib/api.js';
-
-api.capturePendingReferral();
 
 export function Exchange() {
   const [markets, setMarkets] = useState([]);
@@ -22,8 +19,6 @@ export function Exchange() {
   const [activeView, setActiveView] = useState('trade');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(() => localStorage.getItem('gachadex_chat_open') !== '0');
-  const startRealtime = useRealtime((s) => s.start);
-  const startChat = useChat((s) => s.start);
 
   const toggleChat = () =>
     setChatOpen((o) => {
@@ -32,10 +27,13 @@ export function Exchange() {
       return next;
     });
 
+  // Operator panel is reachable at #admin only (not in the public nav).
   useEffect(() => {
-    startRealtime();
-    startChat();
-  }, [startRealtime, startChat]);
+    const sync = () => { if (window.location.hash === '#admin') setActiveView('admin'); };
+    sync();
+    window.addEventListener('hashchange', sync);
+    return () => window.removeEventListener('hashchange', sync);
+  }, []);
 
   const loadMarkets = useCallback(async () => {
     try {
@@ -88,6 +86,7 @@ export function Exchange() {
       {activeView === 'portfolio' && <Portfolio markets={markets} onSelect={handleTradeMarket} />}
       {activeView === 'pool' && <PoolView />}
       {activeView === 'leaderboard' && <Leaderboard />}
+      {activeView === 'admin' && <AdminPanel />}
 
       <Toasts />
       </div>

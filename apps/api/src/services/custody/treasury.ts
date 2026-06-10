@@ -1,4 +1,4 @@
-import { config } from '../../config.ts';
+import { getLimits } from './limits.ts';
 import type { Db, Queryer } from '../../db/client.ts';
 import { getOrCreateSystemAccount, getBalance } from '../ledger.ts';
 import { usdc } from '../../money.ts';
@@ -64,6 +64,8 @@ export interface TreasuryState {
   onchainE6: bigint; // hot + cold + unswept
   pendingE6: bigint; // accepted payouts that will leave the hot wallet
   shortfallE6: bigint; // pending the hot wallet can't cover (operator: top up from cold)
+  insuranceE6: bigint; // current insurance-buffer balance (a house claim, not user-owed)
+  surplusE6: bigint; // onchain − liabilities: unrecorded house funds the operator can allocate to insurance
   breached: boolean; // proof of reserves failing RIGHT NOW (the frozen flag outlives a breach)
   frozen: string | null; // current freeze reason, if any
 }
@@ -75,7 +77,7 @@ export interface TreasuryReport extends TreasuryState {
 /** Gather the treasury/PoR numbers without acting on them. */
 export async function treasuryState(db: Db, chain: TreasuryChain): Promise<TreasuryState> {
   // The reads are mutually independent — gather them concurrently (the chain RPCs dominate).
-  const [ledgerBal, [hot, cold], unswept, pendingRes, frozen] = await Promise.all([
+  const [ledgerBal, [hot, cold], unswept, pendingRes, frozen, insuranceE6] = await Promise.all([
     getOrCreateSystemAccount(db, 'TREASURY_USDC').then((acct) => getBalance(db, acct)),
     Promise.all([chain.hotBalance(), chain.coldBalance()]),
     // Credited-but-unswept deposits still sit on their (ours, HD-derived) deposit addresses —
@@ -90,6 +92,7 @@ export async function treasuryState(db: Db, chain: TreasuryChain): Promise<Treas
        WHERE status IN ('requested', 'signed', 'broadcast')`,
     ),
     withdrawalsFrozen(db),
+    getOrCreateSystemAccount(db, 'INSURANCE_FUND').then((acct) => getBalance(db, acct)),
   ]);
 
   const liabilityE6 = ledgerBal < 0n ? -ledgerBal : 0n;
@@ -104,6 +107,8 @@ export async function treasuryState(db: Db, chain: TreasuryChain): Promise<Treas
     onchainE6,
     pendingE6,
     shortfallE6: pendingE6 > hot ? pendingE6 - hot : 0n,
+    insuranceE6,
+    surplusE6: onchainE6 - liabilityE6,
     breached: onchainE6 < liabilityE6,
     frozen,
   };
@@ -123,9 +128,10 @@ export async function treasuryPass(db: Db, chain: TreasuryChain, log?: CustodyLo
   }
 
   // --- hot-float management ----------------------------------------------------------------
-  const hotMax = usdc(config.hotWalletMaxUsd);
+  const limits = getLimits();
+  const hotMax = usdc(limits.hotWalletMaxUsd);
   const excess = s.hotE6 - (s.pendingE6 > hotMax ? s.pendingE6 : hotMax);
-  const sweptE6 = excess >= usdc(config.minSweepUsd) ? excess : 0n;
+  const sweptE6 = excess >= usdc(limits.minSweepUsd) ? excess : 0n;
   if (sweptE6 > 0n) await chain.sweepToCold(sweptE6);
 
   if (s.shortfallE6 > 0n) {

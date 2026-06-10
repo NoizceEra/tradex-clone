@@ -122,6 +122,10 @@ export async function ingest(
     .map((c) => ({ c, priceE6: toE6(getCardPrice(c)) }))
     .filter((x) => x.priceE6 > 0n);
 
+  // Operator-pinned markets carry a manual price (ROADMAP §2) — the auto-oracle never overwrites them.
+  const pinnedRows = await db.query<{ id: string }>(`SELECT id FROM markets WHERE price_pinned`);
+  const pinned = new Set(pinnedRows.rows.map((r) => r.id));
+
   for (const { c, priceE6 } of priced) {
     const marketId = await db.tx((q) =>
       upsertCardMarket(q, {
@@ -136,6 +140,7 @@ export async function ingest(
         metadata: extractMetadata(c),
       }),
     );
+    if (pinned.has(marketId)) continue; // manual override in effect — skip the auto print + mark
     const accepted = await db.tx((q) => recordOracle(q, marketId, priceE6, observedAt, { tcgplayer: c.tcgplayer ?? null }));
     if (accepted) {
       const market = await getMarketById(db, marketId);
@@ -163,7 +168,7 @@ export async function ingest(
     if (idx.slug === 'graded') {
       // tradeable only when we actually have PSA-10 data; priced off the graded basket
       if (gradedMembers.length > 0) {
-        await buildIndex(db, idx, gradedMembers, observedAt);
+        await buildIndex(db, idx, gradedMembers, observedAt, pinned);
         indices++;
       } else {
         await db.tx((q) => upsertIndexMarket(q, { game: idx.game, slug: idx.slug, name: idx.name, tradeable: false }));
@@ -176,7 +181,7 @@ export async function ingest(
     }
     const n = idx.topN ?? sorted.length;
     const members = sorted.slice(0, n).map((x) => ({ cardId: x.c.id as string, priceE6: x.priceE6 }));
-    await buildIndex(db, idx, members, observedAt);
+    await buildIndex(db, idx, members, observedAt, pinned);
     indices++;
   }
   return { cards: priced.length, indices, graded: gradedMembers.length };
@@ -187,10 +192,12 @@ async function buildIndex(
   idx: { game: string; slug: string; name: string },
   members: { cardId: string; priceE6: bigint }[],
   observedAt: Date,
+  pinned: Set<string>,
 ): Promise<void> {
   if (members.length === 0) return;
   const rawE6 = members.reduce((a, m) => a + m.priceE6, 0n);
   const marketId = await db.tx((q) => upsertIndexMarket(q, { game: idx.game, slug: idx.slug, name: idx.name, tradeable: true }));
+  if (pinned.has(marketId)) return; // operator-pinned manual price — leave it alone
 
   // Divisor: based at BASE_VALUE on first build, then RE-BASED whenever the constituent set
   // changes so the index value is continuous across rebalances (composition shouldn't move it).

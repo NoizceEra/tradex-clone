@@ -142,8 +142,110 @@ async function lpDepth(q: Queryer): Promise<bigint> {
   return getBalance(q, lp);
 }
 
-/** Recompute the market mark from current open-interest skew and persist+publish it. */
-async function refreshMark(q: Queryer, market: MarketRow, indexE6: bigint): Promise<void> {
+/**
+ * B' adaptive price-impact depth for one market (docs/liquidity-hybrid-spec.md §3):
+ *   depth = max(LP NAV, depthFloor, α · cumulativeVolume)
+ * Per-market and self-deepening — a market starts at the floor and grows less price-sensitive as
+ * real volume flows through it. NAV is kept as a lower bound so depth is never shallower than the
+ * old NAV-based depth, and the floor stops a thin (0<NAV<skew) pool pinning the premium to its cap.
+ * Integer-only, no exp() (fixed-point safe). Reads the market's freshly-bumped volume counter.
+ */
+async function marketDepth(q: Queryer, marketId: string): Promise<bigint> {
+  const r = await q.query<{ v: string }>(`SELECT cumulative_volume_uusdc::text AS v FROM markets WHERE id=$1`, [marketId]);
+  const volDepth = (config.depthAlphaE6 * BigInt(r.rows[0]?.v ?? '0')) / 1_000_000n;
+  const floored = volDepth > config.depthFloorUusdc ? volDepth : config.depthFloorUusdc;
+  const nav = await lpDepth(q);
+  return nav > floored ? nav : floored; // depth = max(NAV, floor, α·cumulativeVolume)
+}
+
+/**
+ * The single seam every fill writer goes through: persist the fill row AND credit the market's
+ * cumulative traded volume with the fill's notional (qty × exec price). Routing all of open /
+ * increase / close / liquidation (and future ADL) through here keeps volume from ever desyncing
+ * from the fills ledger and means a new fill path can't forget to record its volume.
+ */
+async function insertFill(
+  q: Queryer,
+  f: { orderId: string; positionId: string; marketId: string; execPriceE6: bigint; qtyE6: bigint; feeUusdc: bigint; realizedPnlUusdc: bigint },
+): Promise<void> {
+  await q.query(
+    `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [randomUUID(), f.orderId, f.positionId, f.marketId, f.execPriceE6.toString(), f.qtyE6.toString(), f.feeUusdc.toString(), f.realizedPnlUusdc.toString()],
+  );
+  const vol = notional(f.qtyE6, f.execPriceE6);
+  if (vol > 0n) {
+    await q.query(`UPDATE markets SET cumulative_volume_uusdc = cumulative_volume_uusdc + $1 WHERE id=$2`, [vol.toString(), f.marketId]);
+  }
+}
+
+/** Anchor a system-initiated close (liquidation / ADL) with a 'reduce_only' order. The prefixed key
+ *  is unique per event, so these never dedupe (unlike the user paths' idempotent anchorOrder). */
+async function insertSystemOrder(q: Queryer, pos: PositionRow, marketId: string, prefix: string): Promise<string> {
+  const orderId = randomUUID();
+  await q.query(
+    `INSERT INTO orders(id,user_id,market_id,idempotency_key,kind,side,qty_e6,leverage_e2,status)
+     VALUES($1,$2,$3,$4,'reduce_only',$5,$6,$7,'filled')`,
+    [orderId, pos.user_id, marketId, `${prefix}-${pos.id}-${randomUUID()}`, pos.side, pos.qty_e6, pos.leverage_e2],
+  );
+  return orderId;
+}
+
+interface OpenPositionPnl {
+  id: string;
+  userId: string;
+  marketId: string;
+  side: 'long' | 'short';
+  qtyE6: bigint;
+  entryE6: bigint;
+  marginUusdc: bigint;
+  markE6: bigint;
+  pnlUusdc: bigint;
+}
+
+/** Every open position with its current unrealized PnL (marked to each market's latest mark).
+ *  Shared by the MAX_PNL_FACTOR gate and the ADL backstop so both see the pool the same way. */
+async function openPositionPnls(q: Queryer): Promise<OpenPositionPnl[]> {
+  const r = await q.query<{ id: string; user_id: string; market_id: string; side: string; qty_e6: string; avg_entry_e6: string; margin_uusdc: string; mark: string }>(
+    `SELECT p.id, p.user_id, p.market_id, p.side, p.qty_e6::text AS qty_e6, p.avg_entry_e6::text AS avg_entry_e6,
+            p.margin_uusdc::text AS margin_uusdc, k.mark_price_e6::text AS mark
+     FROM positions p
+     JOIN LATERAL (SELECT mark_price_e6 FROM marks WHERE market_id=p.market_id ORDER BY computed_at DESC LIMIT 1) k ON true
+     WHERE p.status='open'`,
+  );
+  return r.rows.map((row) => {
+    const side = row.side as 'long' | 'short';
+    const qtyE6 = BigInt(row.qty_e6);
+    const entryE6 = BigInt(row.avg_entry_e6);
+    const markE6 = BigInt(row.mark);
+    return { id: row.id, userId: row.user_id, marketId: row.market_id, side, qtyE6, entryE6, marginUusdc: BigInt(row.margin_uusdc), markE6, pnlUusdc: unrealizedPnl(side, qtyE6, entryE6, markE6) };
+  });
+}
+
+/** A position's signed contribution to what the pool owes: a winner's profit in full; a loser's
+ *  loss only down to its margin (isolated margin caps what the pool can collect). */
+function poolLiabilityOf(p: OpenPositionPnl): bigint {
+  return p.pnlUusdc < -p.marginUusdc ? -p.marginUusdc : p.pnlUusdc;
+}
+
+/** Net pool liability for an already-fetched position set. The single definition both the gate and
+ *  ADL sum against NAV — ADL reuses this on the same `pnls` it scans for the top winner. */
+function sumPoolLiability(pnls: OpenPositionPnl[]): bigint {
+  return pnls.reduce((sum, p) => sum + poolLiabilityOf(p), 0n);
+}
+
+/**
+ * The pool's net liability to traders if every open position closed at the current mark right now.
+ * This is the figure the MAX_PNL_FACTOR gate (opens) and the ADL backstop (force-close) measure
+ * against LP NAV.
+ */
+async function poolPnlLiability(q: Queryer): Promise<bigint> {
+  return sumPoolLiability(await openPositionPnls(q));
+}
+
+/** Recompute the market mark from current open-interest skew and persist+publish it.
+ *  Exported so the manual-price (admin) path recomputes the mark exactly like a trade does. */
+export async function refreshMark(q: Queryer, market: MarketRow, indexE6: bigint): Promise<bigint> {
   const oi = await q.query<{ side: string; q: string }>(
     `SELECT side, COALESCE(SUM(qty_e6),0)::text AS q FROM positions WHERE market_id=$1 AND status='open' GROUP BY side`,
     [market.id],
@@ -155,12 +257,13 @@ async function refreshMark(q: Queryer, market: MarketRow, indexE6: bigint): Prom
     else shortQ = BigInt(row.q);
   }
   const skewUusdc = ((longQ - shortQ) * indexE6) / 1_000_000n;
-  await recomputeMark(q, market, indexE6, skewUusdc, await lpDepth(q));
+  const markE6 = await recomputeMark(q, market, indexE6, skewUusdc, await marketDepth(q, market.id));
   publish(`oi:${market.id}`, 'oi', {
     marketId: market.id,
     longUusdc: ((longQ * indexE6) / 1_000_000n).toString(),
     shortUusdc: ((shortQ * indexE6) / 1_000_000n).toString(),
   });
+  return markE6;
 }
 
 /** Post-mutation refresh: recompute the mark from current skew and the pool's reserved capital. */
@@ -224,11 +327,28 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
       if (margin <= 0n) throw new HttpError(400, 'order too small');
       const openFee = fee(notion, config.openFeeBps);
 
-      // open-interest cap (per side) protects the LP pool
+      // ---- pool-protection checks (all per side) -----------------------------------------------
       const sideCap = input.side === 'long' ? BigInt(market.max_oi_long_uusdc) : BigInt(market.max_oi_short_uusdc);
       const sideOi = (await openNotionalBySide(q, market.id))[input.side === 'long' ? 'longOi' : 'shortOi'];
+      // 1) static per-market OI cap (0 = no static cap) — cheapest, in-memory; reject before any NAV read
       if (sideCap > 0n && sideOi + notion > sideCap) {
         throw new HttpError(400, 'open interest cap reached for this side');
+      }
+      // NAV is read once and shared by both NAV-relative checks below (only when one is enabled).
+      const nav = config.oiCapNavBps > 0 || config.maxPnlFactorBps > 0 ? await lpDepth(q) : 0n;
+      // 2) NAV-relative OI cap (oiCapNavBps>0): one side's OI can't exceed this fraction of LP NAV, so a
+      // market's worst-case PnL vs the pool can't outgrow the vault as NAV shrinks (calibration 0.3-0.5×NAV).
+      // Always enforced when enabled — at NAV≤0 the cap is 0, so an uncapitalized pool takes no new risk.
+      if (config.oiCapNavBps > 0 && sideOi + notion > (nav * BigInt(config.oiCapNavBps)) / 10_000n) {
+        throw new HttpError(400, 'open interest cap reached for this side (pool-relative)');
+      }
+      // 3) pool-health gate (GMX-style MAX_PNL_FACTOR): once the pool already owes traders more than
+      // maxPnlFactor of NAV, pause new opens so a thin/underfunded pool can't be drained by net winners.
+      if (config.maxPnlFactorBps > 0) {
+        if (nav <= 0n) throw new HttpError(409, 'liquidity pool is not capitalized; new positions are paused');
+        if ((await poolPnlLiability(q)) > (nav * BigInt(config.maxPnlFactorBps)) / 10_000n) {
+          throw new HttpError(409, 'pool risk limit reached; new positions are paused');
+        }
       }
 
       const collAcct = await getOrCreateUserAccount(q, userId, 'USER_COLLATERAL');
@@ -277,11 +397,7 @@ export async function openPosition(db: Db, userId: string, input: OpenInput): Pr
         );
       }
 
-      await q.query(
-        `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
-         VALUES($1,$2,$3,$4,$5,$6,$7,0)`,
-        [randomUUID(), orderId, positionId, market.id, markE6.toString(), input.qtyE6.toString(), openFee.toString()],
-      );
+      await insertFill(q, { orderId, positionId, marketId: market.id, execPriceE6: markE6, qtyE6: input.qtyE6, feeUusdc: openFee, realizedPnlUusdc: 0n });
 
       await refreshMarketState(q, market, indexE6);
       publish(`positions:${userId}`, 'update', { marketId: market.id });
@@ -377,11 +493,7 @@ export async function closePosition(db: Db, userId: string, input: CloseInput): 
       }
 
       // fills references the orderId anchored at the top of the tx (guaranteed inserted)
-      await q.query(
-        `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [randomUUID(), orderId, pos.id, market.id, markE6.toString(), closeQty.toString(), closeFeeAmt.toString(), pnl.toString()],
-      );
+      await insertFill(q, { orderId, positionId: pos.id, marketId: market.id, execPriceE6: markE6, qtyE6: closeQty, feeUusdc: closeFeeAmt, realizedPnlUusdc: pnl });
 
       await refreshMarketState(q, market, indexE6);
       publish(`positions:${userId}`, 'update', { marketId: market.id });
@@ -527,17 +639,8 @@ async function liquidatePositionInTx(q: Queryer, pos: PositionRow, market: Marke
     `UPDATE positions SET qty_e6=0, margin_uusdc=0, realized_pnl_uusdc=realized_pnl_uusdc+$1, status='liquidated', closed_at=now(), version=version+1 WHERE id=$2`,
     [pnl.toString(), pos.id],
   );
-  const orderId = randomUUID();
-  await q.query(
-    `INSERT INTO orders(id,user_id,market_id,idempotency_key,kind,side,qty_e6,leverage_e2,status)
-     VALUES($1,$2,$3,$4,'reduce_only',$5,$6,$7,'filled')`,
-    [orderId, pos.user_id, market.id, 'liq-' + pos.id + '-' + randomUUID(), pos.side, qty.toString(), pos.leverage_e2],
-  );
-  await q.query(
-    `INSERT INTO fills(id,order_id,position_id,market_id,exec_price_e6,qty_e6,fee_uusdc,realized_pnl_uusdc)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-    [randomUUID(), orderId, pos.id, market.id, markE6.toString(), qty.toString(), liqFeeTaken.toString(), pnl.toString()],
-  );
+  const orderId = await insertSystemOrder(q, pos, market.id, 'liq');
+  await insertFill(q, { orderId, positionId: pos.id, marketId: market.id, execPriceE6: markE6, qtyE6: qty, feeUusdc: liqFeeTaken, realizedPnlUusdc: pnl });
   await q.query(
     `INSERT INTO liquidations(id,position_id,market_id,user_id,trigger_mark_e6,closed_qty_e6,liquidation_fee_uusdc,bad_debt_uusdc,insurance_drawn_uusdc,socialized_uusdc)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
@@ -547,6 +650,44 @@ async function liquidatePositionInTx(q: Queryer, pos: PositionRow, market: Marke
   await refreshMarketState(q, market, indexE6);
   publish(`positions:${pos.user_id}`, 'liquidated', { positionId: pos.id, markE6: markE6.toString() });
   publish(`liquidations:${pos.user_id}`, 'liquidation', { positionId: pos.id, marketId: market.id, badDebtUusdc: badDebt.toString() });
+}
+
+/**
+ * Auto-deleverage one profitable position: force-close it at the mark, paying its realized gain from
+ * the LP pool and releasing its margin. Unlike a liquidation there's no bad debt or penalty — this
+ * removes a winner's *forward* upside to protect the pool, not because the trader did anything wrong.
+ * Returns false (no-op) if the position is no longer in profit. Mirrors liquidatePositionInTx.
+ */
+async function adlClosePositionInTx(q: Queryer, pos: PositionRow, market: MarketRow, markE6: bigint, indexE6: bigint): Promise<boolean> {
+  await settlePositionFunding(q, pos, market.id);
+  const qty = BigInt(pos.qty_e6);
+  const pnl = unrealizedPnl(pos.side, qty, BigInt(pos.avg_entry_e6), markE6);
+  if (pnl <= 0n) return false; // ADL only force-closes winners — losers don't drain the pool
+
+  const coll = await getOrCreateUserAccount(q, pos.user_id, 'USER_COLLATERAL');
+  const marginAcct = await getOrCreateUserAccount(q, pos.user_id, 'USER_POSITION_MARGIN');
+  const lp = await getOrCreateSystemAccount(q, 'LP_POOL');
+  const margin = BigInt(pos.margin_uusdc);
+
+  await postTxn(q, { reason: 'MARGIN_RELEASE', refType: 'adl', refId: pos.id, entries: [
+    { accountId: marginAcct, amount: -margin },
+    { accountId: coll, amount: margin },
+  ] });
+  await postTxn(q, { reason: 'REALIZED_PNL', refType: 'adl', refId: pos.id, entries: [
+    { accountId: coll, amount: pnl },
+    { accountId: lp, amount: -pnl },
+  ] });
+  await q.query(
+    `UPDATE positions SET qty_e6=0, margin_uusdc=0, realized_pnl_uusdc=realized_pnl_uusdc+$1, status='deleveraged', closed_at=now(), version=version+1 WHERE id=$2`,
+    [pnl.toString(), pos.id],
+  );
+  const orderId = await insertSystemOrder(q, pos, market.id, 'adl');
+  await insertFill(q, { orderId, positionId: pos.id, marketId: market.id, execPriceE6: markE6, qtyE6: qty, feeUusdc: 0n, realizedPnlUusdc: pnl });
+  await refreshMarketState(q, market, indexE6);
+  publish(`positions:${pos.user_id}`, 'deleveraged', { positionId: pos.id, markE6: markE6.toString(), pnlUusdc: pnl.toString() });
+  // notify channel (Toasts subscribes here, same as liquidation) — ADL force-closed a winner
+  publish(`liquidations:${pos.user_id}`, 'deleveraged', { positionId: pos.id, marketId: market.id, pnlUusdc: pnl.toString() });
+  return true;
 }
 
 /** Sweep a market: liquidate every open position whose equity is at/below maintenance margin. */
@@ -569,6 +710,47 @@ export async function liquidateEligible(db: Db, marketId: string): Promise<numbe
         count++;
       }),
     );
+  }
+  return count;
+}
+
+/** Hard cap on force-closes per sweep — a runaway-loop backstop; real convergence is the break below. */
+const ADL_MAX_PER_SWEEP = 1000;
+
+/**
+ * Auto-deleverage backstop (docs/liquidity-hybrid-spec.md §6, Phase 3). When the pool's net liability
+ * to traders exceeds adlPnlFactorBps of NAV, force-close the most profitable positions (at the mark,
+ * pool-wide across all markets) until liability is back under target. This is the active complement to
+ * the MAX_PNL_FACTOR open-gate: the gate stops *new* risk, ADL *reduces* existing risk. Disabled when
+ * adlPnlFactorBps=0. Meant to run each liquidation sweep.
+ */
+export async function autoDeleverage(db: Db): Promise<number> {
+  if (config.adlPnlFactorBps <= 0) return 0;
+  let count = 0;
+  for (let pass = 0; pass < ADL_MAX_PER_SWEEP; pass++) {
+    const nav = await lpDepth(db);
+    const pnls = await openPositionPnls(db);
+    if (sumPoolLiability(pnls) <= (nav * BigInt(config.adlPnlFactorBps)) / 10_000n) break;
+
+    let top: OpenPositionPnl | null = null;
+    for (const p of pnls) if (p.pnlUusdc > 0n && (top === null || p.pnlUusdc > top.pnlUusdc)) top = p;
+    if (top === null) break; // no profitable position left to deleverage
+    const winner = top;
+    const market = await getMarketById(db, winner.marketId);
+    if (!market) break;
+
+    const closed = await withMarketLock(winner.marketId, () =>
+      db.tx(async (q) => {
+        await advisoryXactLock(q, winner.marketId);
+        const fresh = await getOpenPosition(q, winner.userId, winner.marketId, winner.side);
+        if (!fresh || fresh.id !== winner.id) return false;
+        const mi = await getLatestMarkIndex(q, winner.marketId);
+        if (!mi) return false;
+        return adlClosePositionInTx(q, fresh, market, mi.markE6, mi.indexE6);
+      }),
+    );
+    if (!closed) break; // the chosen winner flipped/vanished; let the next sweep retry rather than spin
+    count++;
   }
   return count;
 }

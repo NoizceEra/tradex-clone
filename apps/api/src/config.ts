@@ -89,6 +89,38 @@ export const config = {
   liquidationSweepMs: num('LIQUIDATION_SWEEP_MS', 5_000),
   oracleStaleMs: num('ORACLE_STALE_MS', 36 * 60 * 60 * 1000), // halt a market if no fresh print
 
+  // Pool risk cap (GMX-style MAX_PNL_FACTOR). Pause NEW opens once the pool's net liability to
+  // traders (winners' unrealized profit, losers' losses capped at their margin) exceeds this
+  // fraction of LP NAV — the "stop digging" guard that keeps a thin/underfunded pool from being
+  // drained by net winners (ADL is the active backstop, a later phase). 0 = DISABLED, which is the
+  // play-money default (the pool runs uncapitalized there); operators set this for real funds.
+  // See docs/liquidity-hybrid-spec.md §2.
+  maxPnlFactorBps: num('MAX_PNL_FACTOR_BPS', 0),
+
+  // B' adaptive market depth (LS-LMSR-inspired, docs/liquidity-hybrid-spec.md §3). The mark premium
+  // is clamp(k·skew/depth, ±cap); depth is per-market = max(LP NAV, depthFloor, α·cumulativeVolume),
+  // so every market starts at the floor and DEEPENS (less price impact) as real volume flows through
+  // it — no operator pre-guessing, no exp() (fixed-point safe, unlike Augur v2's LS-LMSR). Keeping
+  // NAV as a lower bound means depth is never shallower than the old NAV-based depth. The floor also
+  // fixes the thin-pool gotcha (a 0<NAV<skew pool no longer pins the premium to its cap).
+  // Defaults preserve today's fresh-market impact; alpha needs calibration against real volume.
+  depthFloorUusdc: BigInt(num('DEPTH_FLOOR_UUSDC', 1_000_000_000_000)), // $1M zero-volume depth
+  depthAlphaE6: BigInt(num('DEPTH_ALPHA_E6', 1_000_000)), // α = 1.0 → depth gains 1 uusdc per uusdc of cumulative volume
+
+  // Auto-deleverage (ADL) — the active backstop to the MAX_PNL_FACTOR gate (Phase 3). When the pool's
+  // net liability to traders exceeds this fraction of NAV, the liquidation sweep force-closes the most
+  // profitable positions at the mark (realizing their gains, removing their forward upside) until
+  // liability is back under the threshold. Set this >= maxPnlFactorBps so opens pause (the gate) BEFORE
+  // ADL fires. 0 = DISABLED (play-money default). See docs/liquidity-hybrid-spec.md §6.
+  adlPnlFactorBps: num('ADL_PNL_FACTOR_BPS', 0),
+
+  // NAV-relative open-interest cap (Phase 4a). On top of the static per-market OI cap, limit each
+  // side's OI to this fraction of LP NAV, so one market's worst-case PnL can't outgrow the pool as NAV
+  // shrinks — the fix for "a single position out-earns the vault" (the static $50k/$250k caps are
+  // unrelated to pool size). Calibration suggests ~3000-5000 (0.3-0.5×NAV); see
+  // docs/liquidity-calibration.md §3. 0 = DISABLED (play-money default; the static cap still applies).
+  oiCapNavBps: num('OI_CAP_NAV_BPS', 0),
+
   // --- Real-funds custody (P0 scaffolding; unused until the REAL_FUNDS paths land) ---
   // See docs/real-funds-custody-plan.md. Env-only; keys/seeds are never hardcoded — the HD master
   // seed lives in KMS and only its reference is configured here.
@@ -159,4 +191,10 @@ if (
   (!process.env.JWT_SECRET || config.jwtSecret === 'dev-insecure-secret-change-me' || config.jwtSecret.length < 32)
 ) {
   throw new Error('JWT_SECRET must be set to a strong (>= 32 char) value in production.');
+}
+
+// Pool-risk knobs must order correctly: ADL force-closes winners, so it must trigger ABOVE the gate
+// that pauses new opens — otherwise ADL fires while the pool is still admitting risk. (Both 0 = off.)
+if (config.adlPnlFactorBps > 0 && config.maxPnlFactorBps > 0 && config.adlPnlFactorBps < config.maxPnlFactorBps) {
+  throw new Error('ADL_PNL_FACTOR_BPS must be >= MAX_PNL_FACTOR_BPS so opens pause (the gate) before ADL force-closes winners.');
 }

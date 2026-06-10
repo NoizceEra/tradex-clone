@@ -18,6 +18,7 @@ export function Toasts() {
     };
     const off = onMessage((msg) => {
       if (msg.type === 'liquidation') push('⚠ Position liquidated', 'down');
+      else if (msg.type === 'deleveraged') push('⚖ Position auto-closed (ADL) — gains paid out', 'up');
     });
     return () => {
       off();

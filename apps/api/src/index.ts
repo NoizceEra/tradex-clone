@@ -2,18 +2,19 @@ import { buildServer } from './server.ts';
 import { initDb } from './db/init.ts';
 import { ingest } from './services/oracle.ts';
 import { accrueFunding } from './services/funding.ts';
-import { liquidateEligible, haltStaleMarkets } from './services/engine.ts';
+import { liquidateEligible, haltStaleMarkets, autoDeleverage } from './services/engine.ts';
 import { scanDeposits } from './services/custody/deposits.ts';
 import { recoverInFlight, processAllRequested } from './services/custody/withdrawals.ts';
 import { treasuryPass } from './services/custody/treasury.ts';
+import { loadLimits } from './services/custody/limits.ts';
 import { solanaDepositChain, solanaWithdrawChain, solanaTreasuryChain } from './services/custody/solana.ts';
 import type { Db } from './db/client.ts';
 import type { FastifyBaseLogger } from 'fastify';
 import { config } from './config.ts';
 
-// The oracle/funding/liquidation loops below intentionally stay on plain setInterval: their
-// bodies are fast local-DB work (or far slower than their cadence), so overlap is a non-issue.
-// The custody workers use chainLoop — slow RPC passes there must never stack (security F3).
+// The oracle/funding loops below stay on plain setInterval: their bodies are fast local-DB work,
+// so overlap is a non-issue. The liquidation sweep and the custody workers use chainLoop — passes
+// that can run long or must never stack (ADL iterates; custody does slow RPC) self-chain instead.
 function startOracleLoop(db: Db, log: FastifyBaseLogger) {
   const run = () =>
     ingest(db)
@@ -104,16 +105,23 @@ function startTreasuryWorker(db: Db, log: FastifyBaseLogger) {
 }
 
 function startLiquidationLoop(db: Db, log: FastifyBaseLogger) {
-  const run = async () => {
-    try {
-      const r = await db.query<{ id: string }>(`SELECT id FROM markets WHERE tradeable AND status IN ('active','reduce_only')`);
-      for (const m of r.rows) await liquidateEligible(db, m.id);
-      await haltStaleMarkets(db, config.oracleStaleMs);
-    } catch (e) {
-      log.error(e, 'liquidation sweep failed');
-    }
-  };
-  setInterval(() => void run(), config.liquidationSweepMs);
+  // Self-chained (not setInterval): the per-market liquidation pass + the pool-wide ADL pass must
+  // never overlap themselves, or two concurrent autoDeleverage runs reading the same stale pool
+  // liability would over-deleverage. chainLoop schedules the next sweep only after this one finishes.
+  chainLoop(
+    async () => {
+      try {
+        const r = await db.query<{ id: string }>(`SELECT id FROM markets WHERE tradeable AND status IN ('active','reduce_only')`);
+        for (const m of r.rows) await liquidateEligible(db, m.id);
+        await autoDeleverage(db); // pool-wide: shed winner over-exposure once liability tops the ADL threshold
+        await haltStaleMarkets(db, config.oracleStaleMs);
+      } catch (e) {
+        log.error(e, 'liquidation sweep failed');
+      }
+    },
+    config.liquidationSweepMs,
+    config.liquidationSweepMs,
+  );
 }
 
 async function main() {
@@ -127,6 +135,8 @@ async function main() {
     startFundingLoop(db, app.log);
     startLiquidationLoop(db, app.log);
     if (config.realFunds) {
+      await loadLimits(db); // pull operator overrides over the config defaults before custody runs
+      setInterval(() => void loadLimits(db).catch((e) => app.log.warn(e, 'limits refresh failed')), 30_000);
       startDepositScanner(db, app.log);
       startWithdrawalWorker(db, app.log);
       startTreasuryWorker(db, app.log);

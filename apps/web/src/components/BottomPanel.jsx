@@ -16,6 +16,8 @@ const TABS = [
 const usd = (e6) => formatUsd(BigInt(e6 ?? '0'));
 const qty = (e6) => (Number(e6 ?? 0) / 1e6).toLocaleString('en-US', { maximumFractionDigits: 4 });
 const sideCls = (s) => (s === 'Buy' || s === 'Long' ? 'up' : 'down');
+const STATUS_LABELS = { closed: 'Closed', liquidated: 'Liquidated', deleveraged: 'Deleveraged' };
+const statusLabel = (s) => STATUS_LABELS[s] ?? s;
 
 function Signed({ e6 }) {
   return <span className={BigInt(e6 ?? '0') >= 0n ? 'up' : 'down'}>{formatSignedUsd(e6 ?? '0')}</span>;
@@ -149,7 +151,7 @@ export function BottomPanel({ market, height }) {
                   <tr key={i}>
                     <td>{p.symbol}</td>
                     <td className={sideCls(p.side)}>{p.side} {p.leverage}x</td>
-                    <td>{p.status}</td>
+                    <td>{statusLabel(p.status)}</td>
                     <td>{usd(p.entryE6)}</td>
                     <td>{p.avgCloseE6 ? usd(p.avgCloseE6) : '—'}</td>
                     <td><Signed e6={p.realizedPnlUusdc} /></td>

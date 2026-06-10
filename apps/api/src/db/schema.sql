@@ -161,6 +161,8 @@ CREATE TABLE IF NOT EXISTS markets (
   min_qty_e6         BIGINT NOT NULL DEFAULT 10000,   -- 0.01 units
   qty_step_e6        BIGINT NOT NULL DEFAULT 10000,
   price_tick_e6      BIGINT NOT NULL DEFAULT 10000,   -- $0.01
+  price_pinned       BOOLEAN NOT NULL DEFAULT false,  -- operator manual-price override; auto-oracle skips pinned markets
+  cumulative_volume_uusdc BIGINT NOT NULL DEFAULT 0,   -- Σ traded notional; drives B' adaptive mark depth
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_markets_kind ON markets(kind, status);
@@ -170,7 +172,9 @@ ALTER TABLE markets ADD COLUMN IF NOT EXISTS game TEXT NOT NULL DEFAULT 'pokemon
 CREATE INDEX IF NOT EXISTS idx_markets_game ON markets(game, kind, status);
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS set_logo TEXT;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS metadata JSONB;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS price_pinned BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE markets ADD COLUMN IF NOT EXISTS graded_psa10_e6 BIGINT;
+ALTER TABLE markets ADD COLUMN IF NOT EXISTS cumulative_volume_uusdc BIGINT NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS index_constituents (
   id        TEXT PRIMARY KEY,
@@ -229,7 +233,7 @@ CREATE TABLE IF NOT EXISTS positions (
   realized_pnl_uusdc        BIGINT NOT NULL DEFAULT 0,
   funding_index_snapshot_e6 BIGINT NOT NULL DEFAULT 0,
   liq_price_e6              BIGINT NOT NULL DEFAULT 0,
-  status                    TEXT NOT NULL DEFAULT 'open',  -- open|closed|liquidated
+  status                    TEXT NOT NULL DEFAULT 'open',  -- open|closed|liquidated|deleveraged
   opened_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
   closed_at                 TIMESTAMPTZ,
   version                   BIGINT NOT NULL DEFAULT 0
@@ -410,3 +414,11 @@ CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON withdrawals(status);
 ALTER TABLE withdrawals DROP CONSTRAINT IF EXISTS withdrawals_idempotency_key_key;
 DROP INDEX IF EXISTS withdrawals_idempotency_key_key;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_withdrawals_user_idem ON withdrawals(user_id, idempotency_key);
+
+-- Operator-tunable settings (key/value). Backs the live-editable custody limits in the admin panel;
+-- absent keys fall back to the config.ts/env defaults. Generic so other runtime knobs can reuse it.
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

@@ -69,6 +69,10 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
   color: var(--gold);
   text-shadow: 2px 2px 0 var(--accent);
   letter-spacing: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer; /* clickable: returns to the landing */
 }
 
 /* Icon logo fills the fixed 64px navbar height (no vertical padding to reduce); kept under 64 so it
@@ -79,6 +83,14 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
 
 .nav-links { display: flex; gap: 1.5rem; }
 .nav-actions { display: flex; align-items: center; gap: 0.6rem; }
+/* X / social icon button — matches the landing's social icons (sharp, muted, gold on hover) */
+.nav-social-link {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; color: var(--text-muted);
+  border: var(--border-w) solid var(--border); transition: color 0.12s, border-color 0.12s;
+}
+.nav-social-link svg { width: 15px; height: 15px; }
+.nav-social-link:hover { color: var(--gold); border-color: var(--gold); }
 
 .nav-link {
   background: none;
@@ -109,6 +121,7 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
 .chat-sidebar {
   position: fixed; top: 0; left: 0; bottom: 0; width: 280px; z-index: 120;
   display: flex; flex-direction: column;
+  font-family: var(--font-base); /* set explicitly so the landing's mono context can't shrink it — match the exchange chat */
   background: var(--bg-2); border-right: 2px solid var(--accent);
 }
 .chat-header {
@@ -488,11 +501,31 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
 .tf-btn:hover { color: var(--text); }
 .tf-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
 
+.chart-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .chart-container {
   flex: 1;
   min-height: 0;
   width: 100%;
   overflow: hidden; /* clip the canvas so it can never bleed over the bottom panel */
+}
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1rem;
+  text-align: center;
+  color: #8b949e;
+  font-size: 10px;
+  line-height: 1.6;
+  pointer-events: none;
 }
 
 .bottom-panel {
@@ -770,6 +803,11 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) var(--bg); }
   border-color: var(--gold) !important;
   color: var(--gold) !important;
 }
+
+/* Connect-modal wallet rows: left-align every row. The global justify-content:center (for the
+   trigger button) otherwise centers wallets with no "Detected" badge (e.g. Solflare), while
+   detected ones look left-aligned only because that badge carries margin-left:auto. */
+.wallet-adapter-modal-list .wallet-adapter-button { justify-content: flex-start !important; }
 
 .place-order-btn {
   width: 100%;
