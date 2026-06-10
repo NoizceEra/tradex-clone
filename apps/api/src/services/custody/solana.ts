@@ -14,6 +14,7 @@ import {
   getAssociatedTokenAddressSync,
 } from '@solana/spl-token';
 import { config } from '../../config.ts';
+import { getLimits } from './limits.ts';
 import { usdc } from '../../money.ts';
 import { swapSolToUsdcViaJupiter } from './jupiter.ts';
 import type { DepositChain, InboundSol, InboundUsdc } from './deposits.ts';
@@ -149,7 +150,7 @@ export function solanaDepositChain(): DepositChain {
 
     async sweepAll(from: Keypair) {
       const balance = await usdcBalance(conn, usdcMint, from.publicKey);
-      if (balance <= 0n || balance < usdc(config.minSweepUsd)) return null; // sub-threshold balances accumulate (F5)
+      if (balance <= 0n || balance < usdc(getLimits().minSweepUsd)) return null; // sub-threshold balances accumulate (F5)
       const fromAta = getAssociatedTokenAddressSync(usdcMint, from.publicKey);
 
       const payer = hotWallet();

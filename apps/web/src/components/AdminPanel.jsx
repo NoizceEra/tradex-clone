@@ -9,6 +9,17 @@ import * as api from '../lib/api.js';
  */
 const KEY_STORE = 'gachadex_admin_key';
 
+// Live-tunable custody limits surfaced in the panel: [key, label, unit].
+const LIMIT_FIELDS = [
+  ['hotWalletMaxUsd', 'Hot wallet cap', 'USD'],
+  ['withdrawalDailyCapUsd', 'Withdrawal daily cap / user', 'USD'],
+  ['withdrawalAutoApproveMaxUsd', 'Auto-approve max', 'USD'],
+  ['minWithdrawalUsd', 'Min withdrawal', 'USD'],
+  ['minDepositUsd', 'Min deposit', 'USD'],
+  ['minSweepUsd', 'Min sweep', 'USD'],
+  ['swapSlippageBps', 'Swap slippage', 'bps'],
+];
+
 function Stat({ label, value }) {
   return (
     <div className="ins-stat" style={{ minWidth: 130 }}>
@@ -31,6 +42,8 @@ export function AdminPanel() {
   const [insuranceE6, setInsuranceE6] = useState(null); // insurance balance (works in both modes)
   const [feesDraft, setFeesDraft] = useState('');
   const [treasDraft, setTreasDraft] = useState('');
+  const [custodyLimits, setCustodyLimits] = useState(null); // { current, defaults } | null (real-funds only)
+  const [limitDrafts, setLimitDrafts] = useState({}); // limit key -> string
 
   const load = useCallback(async () => {
     try {
@@ -63,6 +76,12 @@ export function AdminPanel() {
         /* key not valid yet */
       }
     }
+    // Custody limits are real-funds-only (same gate as treasury); null in play-money.
+    try {
+      setCustodyLimits(await api.adminGetCustodyLimits(adminKey.trim()));
+    } catch {
+      setCustodyLimits(null);
+    }
   }, [adminKey]);
   useEffect(() => {
     loadOps();
@@ -73,6 +92,32 @@ export function AdminPanel() {
     setMsg('Admin key saved on this device.');
     setErr(null);
     loadOps();
+  };
+
+  // Save any edited custody limits (blank fields are left unchanged).
+  const saveLimits = async () => {
+    setErr(null);
+    setMsg(null);
+    const payload = {};
+    for (const [key] of LIMIT_FIELDS) {
+      const v = limitDrafts[key];
+      if (v !== undefined && v !== '') payload[key] = Number(v);
+    }
+    if (Object.keys(payload).length === 0) {
+      setErr('Change at least one limit.');
+      return;
+    }
+    setBusy('limits');
+    try {
+      const { current } = await api.adminSetCustodyLimits(payload, adminKey.trim());
+      setCustodyLimits((cv) => ({ ...cv, current })); // keep defaults, swap in the new current
+      setLimitDrafts({});
+      setMsg('Custody limits updated.');
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(null);
+    }
   };
 
   // Allocate house funds to/from the insurance buffer (fn is one of the api.adminInsurance* calls).
@@ -237,6 +282,44 @@ export function AdminPanel() {
         </button>
         <span className="muted" style={{ fontSize: '0.8rem' }}>send USDC to the treasury wallet first</span>
       </div>
+
+      {custodyLimits && (
+        <>
+          <h3 style={{ marginTop: '1.25rem' }}>Custody limits</h3>
+          <p className="ref-blurb">
+            Live-tunable — saved to the database and applied without a redeploy. Leave a field blank to keep it;
+            the placeholder shows the current value (default in parentheses).
+          </p>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: '0.6rem',
+              maxWidth: 720,
+              margin: '0.5rem 0',
+            }}
+          >
+            {LIMIT_FIELDS.map(([key, label, unit]) => (
+              <label key={key} style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                {label} ({unit})
+                <input
+                  className="wallet-input"
+                  type="number"
+                  min="0"
+                  step={unit === 'bps' ? '1' : '0.01'}
+                  placeholder={`${custodyLimits.current[key]} (def ${custodyLimits.defaults[key]})`}
+                  value={limitDrafts[key] ?? ''}
+                  onChange={(e) => setLimitDrafts((d) => ({ ...d, [key]: e.target.value }))}
+                  style={{ width: '100%', marginTop: '0.2rem' }}
+                />
+              </label>
+            ))}
+          </div>
+          <button className="btn-primary sm" disabled={busy === 'limits' || !adminKey} onClick={saveLimits}>
+            {busy === 'limits' ? '…' : 'Save custody limits'}
+          </button>
+        </>
+      )}
 
       <h3 style={{ marginTop: '1.25rem' }}>Manual pricing</h3>
       <p className="ref-blurb">

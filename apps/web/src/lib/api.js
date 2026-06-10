@@ -185,5 +185,8 @@ export const adminGetInsurance = (adminKey) => adminGet('/admin/insurance', admi
 export const adminInsuranceFromFees = (amountUusdc, adminKey) => adminReq('/admin/insurance/from-fees', adminKey, { amountUusdc });
 export const adminInsuranceToFees = (amountUusdc, adminKey) => adminReq('/admin/insurance/to-fees', adminKey, { amountUusdc });
 export const adminInsuranceFromTreasury = (amountUusdc, adminKey) => adminReq('/admin/insurance/from-treasury', adminKey, { amountUusdc });
+// Live-tunable custody limits. GET -> { current, defaults }; POST a partial -> { current }.
+export const adminGetCustodyLimits = (adminKey) => adminGet('/admin/custody-limits', adminKey);
+export const adminSetCustodyLimits = (limits, adminKey) => adminReq('/admin/custody-limits', adminKey, limits);
 
 export const apiConfig = { API_URL };

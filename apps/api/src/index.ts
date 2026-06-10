@@ -6,6 +6,7 @@ import { liquidateEligible, haltStaleMarkets, autoDeleverage } from './services/
 import { scanDeposits } from './services/custody/deposits.ts';
 import { recoverInFlight, processAllRequested } from './services/custody/withdrawals.ts';
 import { treasuryPass } from './services/custody/treasury.ts';
+import { loadLimits } from './services/custody/limits.ts';
 import { solanaDepositChain, solanaWithdrawChain, solanaTreasuryChain } from './services/custody/solana.ts';
 import type { Db } from './db/client.ts';
 import type { FastifyBaseLogger } from 'fastify';
@@ -134,6 +135,8 @@ async function main() {
     startFundingLoop(db, app.log);
     startLiquidationLoop(db, app.log);
     if (config.realFunds) {
+      await loadLimits(db); // pull operator overrides over the config defaults before custody runs
+      setInterval(() => void loadLimits(db).catch((e) => app.log.warn(e, 'limits refresh failed')), 30_000);
       startDepositScanner(db, app.log);
       startWithdrawalWorker(db, app.log);
       startTreasuryWorker(db, app.log);

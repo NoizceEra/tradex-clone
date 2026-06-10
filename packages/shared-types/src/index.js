@@ -115,6 +115,22 @@ export const InsuranceFundRequest = z.object({
   amountUusdc: MicroStr, // micro-USDC
 });
 
+// Operator-tunable custody limits (admin panel). All optional — only the provided keys are updated.
+// USD fields are plain dollar numbers (the server converts to micro-USDC); swapSlippageBps is bps.
+// Bounds mirror validateLimit() in apps/api/src/services/custody/limits.ts — keep the two in sync.
+const LimitUsd = z.coerce.number().nonnegative().max(1_000_000_000);
+export const CustodyLimitsRequest = z
+  .object({
+    minDepositUsd: LimitUsd.optional(),
+    minSweepUsd: LimitUsd.optional(),
+    minWithdrawalUsd: LimitUsd.optional(),
+    withdrawalDailyCapUsd: LimitUsd.optional(),
+    hotWalletMaxUsd: LimitUsd.optional(),
+    withdrawalAutoApproveMaxUsd: LimitUsd.optional(),
+    swapSlippageBps: z.coerce.number().int().min(0).max(1000).optional(),
+  })
+  .strict();
+
 // --- real-funds wallet (custody P2) -------------------------------------------
 // Withdrawals need a step-up: the wallet signs a server-rendered message over the EXACT
 // (amount, dest, nonce) — get the message from /wallet/withdraw/nonce, sign it, submit both.

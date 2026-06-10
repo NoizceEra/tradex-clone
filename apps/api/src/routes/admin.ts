@@ -18,8 +18,9 @@ import {
   withdrawalsFrozen,
   type TreasuryChain,
 } from '../services/custody/treasury.ts';
-import { InsuranceFundRequest } from '@pokex/shared-types';
+import { InsuranceFundRequest, CustodyLimitsRequest } from '@pokex/shared-types';
 import { allocateTreasurySurplusToInsurance } from '../services/insurance.ts';
+import { limitsView, setLimits } from '../services/custody/limits.ts';
 
 /**
  * Operator endpoints (custody P2/P3 — see docs/ops-runbook.md). Registered ONLY when REAL_FUNDS
@@ -115,6 +116,15 @@ export function adminRoutes(chains: AdminChains) {
       const { amountUusdc } = InsuranceFundRequest.parse(req.body);
       const s = await treasuryState(await getDb(), chains.treasuryChain);
       return allocateTreasurySurplusToInsurance(await getDb(), BigInt(amountUusdc), s.surplusE6 > 0n ? s.surplusE6 : 0n);
+    });
+
+    // Live-tunable custody limits (hot-wallet cap, withdrawal caps, min amounts, swap slippage).
+    // GET returns the effective values + the config defaults; POST upserts overrides into `settings`.
+    app.get('/admin/custody-limits', rl(config.routeRateLimits.admin), async () => limitsView());
+    app.post('/admin/custody-limits', rl(config.routeRateLimits.admin), async (req) => {
+      const body = CustodyLimitsRequest.parse(req.body);
+      const current = await setLimits(await getDb(), body);
+      return { current };
     });
   };
 }

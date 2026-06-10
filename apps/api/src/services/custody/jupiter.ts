@@ -1,5 +1,6 @@
 import { Connection, Keypair, VersionedTransaction } from '@solana/web3.js';
 import { config } from '../../config.ts';
+import { getLimits } from './limits.ts';
 
 /**
  * Thin Jupiter v6 client (custody P1.5): swap a deposit wallet's SOL into USDC, in place.
@@ -24,7 +25,7 @@ interface QuoteResponse {
 export async function swapSolToUsdcViaJupiter(conn: Connection, from: Keypair, lamports: bigint): Promise<string> {
   const quoteUrl =
     `${config.jupiterBase}/v6/quote?inputMint=${SOL_MINT}&outputMint=${config.usdcMint}` +
-    `&amount=${lamports.toString()}&slippageBps=${config.swapSlippageBps}`;
+    `&amount=${lamports.toString()}&slippageBps=${getLimits().swapSlippageBps}`;
   const quote = (await (await fetch(quoteUrl)).json()) as QuoteResponse;
   if (!quote || quote.error || !quote.outAmount) {
     throw new Error(`jupiter quote failed: ${quote?.error ?? 'no route'}`);

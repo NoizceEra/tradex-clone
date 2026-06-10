@@ -414,3 +414,11 @@ CREATE INDEX IF NOT EXISTS idx_withdrawals_status ON withdrawals(status);
 ALTER TABLE withdrawals DROP CONSTRAINT IF EXISTS withdrawals_idempotency_key_key;
 DROP INDEX IF EXISTS withdrawals_idempotency_key_key;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_withdrawals_user_idem ON withdrawals(user_id, idempotency_key);
+
+-- Operator-tunable settings (key/value). Backs the live-editable custody limits in the admin panel;
+-- absent keys fall back to the config.ts/env defaults. Generic so other runtime knobs can reuse it.
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

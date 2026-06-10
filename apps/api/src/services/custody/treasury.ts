@@ -1,4 +1,4 @@
-import { config } from '../../config.ts';
+import { getLimits } from './limits.ts';
 import type { Db, Queryer } from '../../db/client.ts';
 import { getOrCreateSystemAccount, getBalance } from '../ledger.ts';
 import { usdc } from '../../money.ts';
@@ -128,9 +128,10 @@ export async function treasuryPass(db: Db, chain: TreasuryChain, log?: CustodyLo
   }
 
   // --- hot-float management ----------------------------------------------------------------
-  const hotMax = usdc(config.hotWalletMaxUsd);
+  const limits = getLimits();
+  const hotMax = usdc(limits.hotWalletMaxUsd);
   const excess = s.hotE6 - (s.pendingE6 > hotMax ? s.pendingE6 : hotMax);
-  const sweptE6 = excess >= usdc(config.minSweepUsd) ? excess : 0n;
+  const sweptE6 = excess >= usdc(limits.minSweepUsd) ? excess : 0n;
   if (sweptE6 > 0n) await chain.sweepToCold(sweptE6);
 
   if (s.shortfallE6 > 0n) {

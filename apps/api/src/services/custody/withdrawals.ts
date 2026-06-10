@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { config } from '../../config.ts';
+import { getLimits } from './limits.ts';
 import { HttpError } from '../../errors.ts';
 import type { Db, Queryer } from '../../db/client.ts';
 import { getOrCreateSystemAccount, getOrCreateUserAccount, postTxn } from '../ledger.ts';
@@ -110,8 +110,9 @@ export async function requestWithdrawal(
 ): Promise<WithdrawalRow> {
   // Zero-IO checks first — a malformed request never opens a transaction.
   if (!isValidPubkey(input.dest)) throw new HttpError(400, 'invalid destination address');
-  if (input.amountE6 < usdc(config.minWithdrawalUsd)) {
-    throw new HttpError(400, `minimum withdrawal is ${config.minWithdrawalUsd} USDC`);
+  const minWithdrawalUsd = getLimits().minWithdrawalUsd;
+  if (input.amountE6 < usdc(minWithdrawalUsd)) {
+    throw new HttpError(400, `minimum withdrawal is ${minWithdrawalUsd} USDC`);
   }
 
   // Auto-freeze gate (custody P3): a proof-of-reserves breach halts new withdrawals app-wide.
@@ -154,8 +155,9 @@ export async function requestWithdrawal(
          AND status NOT IN ('failed', 'reversed')`,
       [userId],
     );
-    if (BigInt(day.rows[0].total) > usdc(config.withdrawalDailyCapUsd)) {
-      throw new HttpError(429, `daily withdrawal cap is ${config.withdrawalDailyCapUsd} USDC`);
+    const dailyCapUsd = getLimits().withdrawalDailyCapUsd;
+    if (BigInt(day.rows[0].total) > usdc(dailyCapUsd)) {
+      throw new HttpError(429, `daily withdrawal cap is ${dailyCapUsd} USDC`);
     }
 
     // Lock the collateral row so a concurrent trade/withdrawal can't race the balance check
@@ -247,7 +249,7 @@ export async function processAllRequested(
   if (await withdrawalsFrozen(db)) return { confirmed: 0 };
   const r = await db.query<{ id: string }>(
     `SELECT id FROM withdrawals WHERE status = 'requested' AND amount_e6 <= $1 ORDER BY requested_at`,
-    [usdc(config.withdrawalAutoApproveMaxUsd).toString()],
+    [usdc(getLimits().withdrawalAutoApproveMaxUsd).toString()],
   );
   let confirmed = 0;
   for (const { id } of r.rows) {
