@@ -75,7 +75,8 @@
 .lp-nav-links { display: flex; align-items: center; gap: clamp(0.7rem, 2vw, 1.6rem); }
 .lp-nav-links a { font-family: var(--font-display); font-size: 0.55rem; color: var(--text-muted); text-decoration: none; text-transform: uppercase; }
 .lp-nav-links a:hover { color: var(--gold); }
-.lp-social { font-family: var(--font-display); font-size: 0.6rem; color: var(--text-muted); text-decoration: none; border: 2px solid var(--border); padding: 0.3rem 0.45rem; line-height: 1; }
+.lp-social { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; color: var(--text-muted); border: 2px solid var(--border); transition: color 0.12s, border-color 0.12s; }
+.lp-social svg { width: 15px; height: 15px; }
 .lp-social:hover { color: var(--gold); border-color: var(--gold); }
 
 /* ---- hero ------------------------------------------------------------------ */
@@ -131,8 +132,10 @@
 /* ---- contract address ------------------------------------------------------ */
 .lp-ca {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.7rem;
-  max-width: 1120px; margin: 0 auto; padding: 1.5rem clamp(1rem, 4vw, 3rem);
+  max-width: 1120px; margin: 0 auto; padding: clamp(2.5rem, 6vw, 4rem) clamp(1rem, 4vw, 3rem);
 }
+/* the CA's own symmetric padding centers it between the tape and the next heading */
+.lp-ca + .lp-section { padding-top: 0; }
 .lp-ca-label { font-family: var(--font-display); font-size: 0.5rem; color: var(--accent-lit); letter-spacing: 1px; }
 .lp-ca-addr {
   font-family: var(--lp-mono); font-size: 0.82rem; color: var(--gold);
@@ -177,10 +180,10 @@
 .lp-foot-meta { flex: 1; min-width: 200px; }
 .lp-foot-meta > div:first-child { font-size: 0.6rem; color: var(--gold); margin-bottom: 0.5rem; }
 .lp-foot-fine { font-size: 0.72rem; line-height: 1.6; color: var(--text-muted); }
-.lp-foot-social { margin-top: 0.55rem; font-size: 0.72rem; }
-.lp-foot-social a { color: var(--text-muted); text-decoration: none; }
+.lp-foot-social { display: flex; gap: 0.55rem; margin-top: 0.7rem; }
+.lp-foot-social a { display: inline-flex; color: var(--text-muted); transition: color 0.12s; }
+.lp-foot-social a svg { width: 18px; height: 18px; }
 .lp-foot-social a:hover { color: var(--gold); }
-.lp-foot-dot { color: var(--border); }
 
 /* ---- responsive ------------------------------------------------------------ */
 @media (max-width: 760px) {
