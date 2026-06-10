@@ -34,6 +34,12 @@ const FAQ = [
   ['Do I own the cards?', 'No. GachaDex is price exposure, not physical custody. You trade the market without ever shipping a card.'],
 ];
 
+const CONTRACT_ADDRESS = '3FdoksSvontxzSg42mfBccFp8zmH4KdgbS8bsoMgpump';
+const SOCIALS = [
+  ['X', 'https://x.com/gachadexcards'],
+  ['GitHub', 'https://github.com/NoizceEra/gachadex-landing'],
+];
+
 export function Landing({ onEnter, chatOpen, onToggleChat }) {
   const unread = useChat((s) => s.unread);
   const [w, setW] = useState(0);
@@ -41,6 +47,17 @@ export function Landing({ onEnter, chatOpen, onToggleChat }) {
     const t = setInterval(() => setW((i) => (i + 1) % CYCLE.length), 1600);
     return () => clearInterval(t);
   }, []);
+
+  const [copied, setCopied] = useState(false);
+  const copyCa = () => {
+    navigator.clipboard
+      ?.writeText(CONTRACT_ADDRESS)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {});
+  };
 
   const enter = (e) => {
     e?.preventDefault();
@@ -71,6 +88,11 @@ export function Landing({ onEnter, chatOpen, onToggleChat }) {
           <a href="#how" onClick={scrollTo('how')}>HOW IT WORKS</a>
           <a href="#why" onClick={scrollTo('why')}>FEATURES</a>
           <a href="#faq" onClick={scrollTo('faq')}>FAQ</a>
+          {SOCIALS.map(([label, href]) => (
+            <a key={label} className="lp-social" href={href} target="_blank" rel="noopener noreferrer" title={label}>
+              {label === 'X' ? '𝕏' : 'GH'}
+            </a>
+          ))}
           <button className="lp-btn lp-btn-sm" onClick={enter}>ENTER ▶</button>
         </nav>
       </header>
@@ -134,6 +156,13 @@ export function Landing({ onEnter, chatOpen, onToggleChat }) {
         </div>
       </div>
 
+      {/* CONTRACT ADDRESS */}
+      <section className="lp-ca">
+        <span className="lp-ca-label">★ CONTRACT</span>
+        <code className="lp-ca-addr">{CONTRACT_ADDRESS}</code>
+        <button className="lp-ca-copy" onClick={copyCa}>{copied ? '✓ COPIED' : '📋 COPY'}</button>
+      </section>
+
       {/* HOW IT WORKS */}
       <section className="lp-section" id="how">
         <h2 className="lp-h2">THREE MOVES TO YOUR FIRST TRADE</h2>
@@ -190,6 +219,14 @@ export function Landing({ onEnter, chatOpen, onToggleChat }) {
           <div>GachaDex — TCG Card Perps</div>
           <div className="lp-foot-fine">
             Trade price exposure, not physical cards. Not affiliated with Nintendo / The Pokémon Company. © 2026 GachaDex.
+          </div>
+          <div className="lp-foot-social">
+            {SOCIALS.map(([label, href], i) => (
+              <span key={label}>
+                {i > 0 && <span className="lp-foot-dot"> · </span>}
+                <a href={href} target="_blank" rel="noopener noreferrer">{label}</a>
+              </span>
+            ))}
           </div>
         </div>
         <button className="lp-btn lp-btn-sm" onClick={enter}>ENTER ▶</button>

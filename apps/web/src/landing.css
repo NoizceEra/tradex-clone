@@ -75,6 +75,8 @@
 .lp-nav-links { display: flex; align-items: center; gap: clamp(0.7rem, 2vw, 1.6rem); }
 .lp-nav-links a { font-family: var(--font-display); font-size: 0.55rem; color: var(--text-muted); text-decoration: none; text-transform: uppercase; }
 .lp-nav-links a:hover { color: var(--gold); }
+.lp-social { font-family: var(--font-display); font-size: 0.6rem; color: var(--text-muted); text-decoration: none; border: 2px solid var(--border); padding: 0.3rem 0.45rem; line-height: 1; }
+.lp-social:hover { color: var(--gold); border-color: var(--gold); }
 
 /* ---- hero ------------------------------------------------------------------ */
 .lp-hero {
@@ -126,6 +128,25 @@
 .lp-spark { color: var(--accent); margin: 0 1.4rem; }
 @keyframes lp-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
+/* ---- contract address ------------------------------------------------------ */
+.lp-ca {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.7rem;
+  max-width: 1120px; margin: 0 auto; padding: 1.5rem clamp(1rem, 4vw, 3rem);
+}
+.lp-ca-label { font-family: var(--font-display); font-size: 0.5rem; color: var(--accent-lit); letter-spacing: 1px; }
+.lp-ca-addr {
+  font-family: var(--lp-mono); font-size: 0.82rem; color: var(--gold);
+  background: var(--bg-2); border: 2px solid var(--border); padding: 0.6rem 0.8rem;
+  max-width: 100%; overflow-wrap: anywhere;
+}
+.lp-ca-copy {
+  font-family: var(--font-display); font-size: 0.55rem; text-transform: uppercase; white-space: nowrap;
+  background: var(--gold); color: #1a1205; border: var(--lp-edge); box-shadow: 3px 3px 0 var(--accent);
+  padding: 0.62rem 0.8rem; cursor: pointer; transition: transform 0.08s, box-shadow 0.08s;
+}
+.lp-ca-copy:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--accent); }
+.lp-ca-copy:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--accent); }
+
 /* ---- sections -------------------------------------------------------------- */
 .lp-section { max-width: 1120px; margin: 0 auto; padding: clamp(3rem, 7vw, 5.5rem) clamp(1rem, 4vw, 3rem); }
 .lp-section-alt { max-width: none; background: var(--bg-2); border-top: 2px solid var(--border); border-bottom: 2px solid var(--border); }
@@ -156,6 +177,10 @@
 .lp-foot-meta { flex: 1; min-width: 200px; }
 .lp-foot-meta > div:first-child { font-size: 0.6rem; color: var(--gold); margin-bottom: 0.5rem; }
 .lp-foot-fine { font-size: 0.72rem; line-height: 1.6; color: var(--text-muted); }
+.lp-foot-social { margin-top: 0.55rem; font-size: 0.72rem; }
+.lp-foot-social a { color: var(--text-muted); text-decoration: none; }
+.lp-foot-social a:hover { color: var(--gold); }
+.lp-foot-dot { color: var(--border); }
 
 /* ---- responsive ------------------------------------------------------------ */
 @media (max-width: 760px) {
