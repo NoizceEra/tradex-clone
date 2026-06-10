@@ -5,7 +5,6 @@ import './index.css';
 import './themes.css';
 import { initialSkin } from './store/theme';
 
-// Apply the saved skin before first paint so there's no retro→skin flash.
 document.documentElement.setAttribute('data-theme', initialSkin());
 
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';

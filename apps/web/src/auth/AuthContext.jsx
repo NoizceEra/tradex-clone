@@ -41,11 +41,11 @@ export function AuthProvider({ children }) {
       const msg = e.message || String(e);
       // Provide helpful errors for common wallet/network issues
       if (msg.includes('signature verification failed')) {
-        setError('Signature verification failed. Make sure you\'re on Solana Devnet in your wallet.');
+        setError('Signature verification failed.');
       } else if (msg.includes('User rejected') || msg.includes('user rejected')) {
         setError('Wallet signature was cancelled.');
       } else if (msg.includes('network') || msg.includes('connection')) {
-        setError('Network error. Check your RPC connection and ensure your wallet is on Devnet.');
+        setError('Network error. Check your RPC connection.');
       } else {
         setError(msg);
       }

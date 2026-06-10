@@ -40,3 +40,6 @@ dist-ssr
 
 # Local design mockups (HTML design source-of-truth, kept out of the repo)
 mockups/
+
+# agent tool runtime state (do not commit)
+.omc/
