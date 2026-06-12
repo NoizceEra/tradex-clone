@@ -4,6 +4,7 @@ import { SidebarMarkets } from '../components/SidebarMarkets';
 import { TradingView } from '../components/TradingView';
 import { OrderEntry } from '../components/OrderEntry';
 import { Marketplace } from '../components/Marketplace';
+import { GachaMachine } from '../components/GachaMachine';
 import { Portfolio } from '../components/Portfolio';
 import { PoolView } from '../components/PoolView';
 import { Leaderboard } from '../components/Leaderboard';
@@ -83,6 +84,7 @@ export function Exchange() {
       )}
 
       {activeView === 'markets' && <Marketplace markets={markets} loading={loading} onTradeMarket={handleTradeMarket} />}
+      {activeView === 'gacha' && <GachaMachine markets={markets} onTradeMarket={handleTradeMarket} />}
       {activeView === 'portfolio' && <Portfolio markets={markets} onSelect={handleTradeMarket} />}
       {activeView === 'pool' && <PoolView />}
       {activeView === 'leaderboard' && <Leaderboard />}

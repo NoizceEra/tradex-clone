@@ -7,6 +7,7 @@ const NAV = [
   ['home', 'Home'],
   ['trade', 'Exchange'],
   ['markets', 'Markets'],
+  ['gacha', 'Gacha'],
   ['pool', 'Pool'],
   ['leaderboard', 'Leaderboard'],
   ['portfolio', 'Portfolio'],
